@@ -7,7 +7,7 @@ export type User = { username: string; password: string; role: Role; name: strin
 export type Order = {
   id: string; customer: string; name: string; format: string; status: string;
   designer: string; date: string; notes: string; fileUrl: string; fileKey?: string;
-  downloadName: string; sentToCustomer: string;
+  downloadName: string; sourceFiles?: { fileKey: string; name: string }[]; sentToCustomer: string;
 };
 export type CompletedFile = {
   name: string; fileUrl: string; fileKey?: string; format: string; order: string;
