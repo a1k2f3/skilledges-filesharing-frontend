@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { getCurrentUser, listFiles, type ApiFile, type ApiUser } from "./api";
 
 export type Role = "admin" | "customer" | "designer";
-export type User = { username: string; password: string; role: Role; name: string };
+export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string };
 export type Order = {
   id: string; customer: string; name: string; format: string; status: string;
   designer: string; date: string; notes: string; fileUrl: string; fileKey?: string;
@@ -33,6 +34,14 @@ type PortalContextValue = {
   removeOrder: (id: string) => void; addFile: (file: CompletedFile) => void;
   updatePassword: (password: string) => void; logout: () => void;
 };
+
+function mapUser(user: ApiUser): User {
+  return { id: user._id, username: user.email, email: user.email, password: "", role: user.role === "admin" ? "admin" : "customer", name: user.name };
+}
+
+function mapFile(file: ApiFile): CompletedFile {
+  return { name: file.originalName, fileUrl: file.secureUrl, fileKey: file._id, format: file.format || file.mimeType, order: "", customer: "", designer: "", date: file.createdAt };
+}
 const PortalContext = createContext<PortalContextValue | null>(null);
 
 export function PortalProvider({ children }: { children: ReactNode }) {
@@ -43,25 +52,37 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<CompletedFile[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("skillsEdgeCurrentSession");
-    const savedUsers = localStorage.getItem("skillsEdgeUsers");
-    const today = new Date().toDateString();
-    if (localStorage.getItem("skillsEdgeLastDate") !== today) {
-      localStorage.setItem("skillsEdgeOrders", "[]"); localStorage.setItem("skillsEdgeFiles", "[]");
-      localStorage.setItem("skillsEdgeLastDate", today);
-    }
-    if (savedUsers) setUsers(JSON.parse(savedUsers));
-    if (saved) setUser(JSON.parse(saved));
-    else window.location.href = "/";
-    const storedOrders = JSON.parse(localStorage.getItem("skillsEdgeOrders") || "[]") as Order[];
-    const storedFiles = JSON.parse(localStorage.getItem("skillsEdgeFiles") || "[]") as CompletedFile[];
-    const cleanOrders = storedOrders.map(({ fileUrl, ...order }) => ({ ...order, fileUrl: fileUrl?.startsWith("data:") ? "" : fileUrl || "" }));
-    const cleanFiles = storedFiles.map(({ fileUrl, ...file }) => ({ ...file, fileUrl: fileUrl?.startsWith("data:") ? "" : fileUrl || "" }));
-    setOrders(cleanOrders);
-    setFiles(cleanFiles);
-    localStorage.setItem("skillsEdgeOrders", JSON.stringify(cleanOrders));
-    localStorage.setItem("skillsEdgeFiles", JSON.stringify(cleanFiles));
-    setReady(true);
+    const hydrate = async () => {
+      const saved = localStorage.getItem("skillsEdgeCurrentSession");
+      const token = localStorage.getItem("skillsEdgeToken");
+      const savedUsers = localStorage.getItem("skillsEdgeUsers");
+      const today = new Date().toDateString();
+      if (localStorage.getItem("skillsEdgeLastDate") !== today) {
+        localStorage.setItem("skillsEdgeOrders", "[]"); localStorage.setItem("skillsEdgeFiles", "[]");
+        localStorage.setItem("skillsEdgeLastDate", today);
+      }
+      if (savedUsers) setUsers(JSON.parse(savedUsers));
+      if (!token || !saved) { window.location.href = "/"; return; }
+      const storedOrders = JSON.parse(localStorage.getItem("skillsEdgeOrders") || "[]") as Order[];
+      const cleanOrders = storedOrders.map(({ fileUrl, ...order }) => ({ ...order, fileUrl: fileUrl?.startsWith("data:") ? "" : fileUrl || "" }));
+      setOrders(cleanOrders);
+      localStorage.setItem("skillsEdgeOrders", JSON.stringify(cleanOrders));
+      try {
+        const [currentUser, apiFiles] = await Promise.all([getCurrentUser(), listFiles()]);
+        const nextUser = mapUser(currentUser);
+        const nextFiles = apiFiles.map(mapFile);
+        setUser(nextUser);
+        setFiles(nextFiles);
+        localStorage.setItem("skillsEdgeCurrentSession", JSON.stringify(nextUser));
+        localStorage.setItem("skillsEdgeFiles", JSON.stringify(nextFiles));
+        setReady(true);
+      } catch {
+        localStorage.removeItem("skillsEdgeToken");
+        localStorage.removeItem("skillsEdgeCurrentSession");
+        window.location.href = "/";
+      }
+    };
+    void hydrate();
   }, []);
 
   const persistOrders = (next: Order[]) => { setOrders(next); localStorage.setItem("skillsEdgeOrders", JSON.stringify(next)); };
@@ -77,7 +98,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("skillsEdgeUsers", JSON.stringify(nextUsers));
     localStorage.setItem("skillsEdgeCurrentSession", JSON.stringify(nextUsers[user.username]));
   };
-  const logout = () => { setUser(null); localStorage.removeItem("skillsEdgeCurrentSession"); };
+  const logout = () => { setUser(null); localStorage.removeItem("skillsEdgeToken"); localStorage.removeItem("skillsEdgeCurrentSession"); };
 
   if (!ready || !user) return null;
   return <PortalContext.Provider value={{ user, users, orders, files, addOrder, updateOrder, removeOrder, addFile, updatePassword, logout }}>{children}</PortalContext.Provider>;
