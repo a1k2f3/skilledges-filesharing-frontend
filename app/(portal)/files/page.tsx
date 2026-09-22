@@ -1,20 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listTeams, shareFileWithTeam, type ApiTeam } from "@/components/api";
+import { downloadFile, listTeams, shareFileWithTeam, type ApiTeam } from "@/components/api";
 import { getFileUrl } from "@/components/file-store";
 import { usePortal } from "@/components/portal-context";
 import { PageHeader } from "@/components/portal-ui";
 
 function FileDownload({ fileKey, legacyUrl, name }: { fileKey?: string; legacyUrl?: string; name: string }) {
 	const [url, setUrl] = useState(legacyUrl || "");
+	const isApiFile = Boolean(fileKey && /^[a-f\d]{24}$/i.test(fileKey));
 
 	useEffect(() => {
 		let objectUrl = "";
-		if (fileKey) getFileUrl(fileKey).then((resolvedUrl) => { objectUrl = resolvedUrl; setUrl(resolvedUrl); });
+		if (fileKey && !isApiFile) getFileUrl(fileKey).then((resolvedUrl) => { objectUrl = resolvedUrl; if (resolvedUrl) setUrl(resolvedUrl); });
 		return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
-	}, [fileKey]);
+	}, [fileKey, isApiFile]);
 
+	if (isApiFile) return <button className="button button-secondary" type="button" onClick={() => void downloadFile(fileKey!, name)}>Download file</button>;
 	return url ? <a className="button button-secondary" href={url} download={name}>Download ↓</a> : <span className="muted">Preparing file...</span>;
 }
 

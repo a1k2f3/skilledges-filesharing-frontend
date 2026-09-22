@@ -96,6 +96,14 @@ export function listTeams() {
   return request<ApiTeam[]>("/teams");
 }
 
+export function listMyTeams() {
+  return request<ApiTeam[]>("/teams/mine");
+}
+
+export function getTeam(teamId: string) {
+  return request<ApiTeam>(`/teams/${teamId}`);
+}
+
 export function createTeam(name: string, memberIds: string[]) {
   return request<ApiTeam>("/teams", {
     method: "POST",
@@ -130,4 +138,24 @@ export function shareFileWithTeam(fileId: string, teamId: string, permission: "v
     method: "POST",
     body: JSON.stringify({ permission })
   });
+}
+
+export function listDesigners() {
+  return request<ApiUser[]>("/users/designers");
+}
+
+export async function downloadFile(fileId: string, filename: string) {
+  const token = typeof window === "undefined" ? null : localStorage.getItem("skillsEdgeToken");
+  const response = await fetch(`${API_URL}/files/${fileId}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+  });
+  if (!response.ok) throw new Error("Unable to download file");
+  const blobUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
 }
