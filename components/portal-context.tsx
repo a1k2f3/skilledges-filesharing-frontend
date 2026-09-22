@@ -36,7 +36,7 @@ type PortalContextValue = {
 };
 
 function mapUser(user: ApiUser): User {
-  return { id: user._id, username: user.email, email: user.email, password: "", role: user.role === "admin" ? "admin" : "customer", name: user.name };
+  return { id: user._id, username: user.email, email: user.email, password: "", role: user.role === "admin" ? "admin" : user.role === "designer" ? "designer" : "customer", name: user.name };
 }
 
 function mapFile(file: ApiFile): CompletedFile {

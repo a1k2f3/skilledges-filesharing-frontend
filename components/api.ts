@@ -18,7 +18,7 @@ export type ApiUser = {
   _id: string;
   name: string;
   email: string;
-  role: "admin" | "user";
+  role: "admin" | "user" | "designer";
   isActive: boolean;
   lastSeen: string | null;
 };
@@ -31,6 +31,17 @@ export type ApiFile = {
   mimeType: string;
   size: number;
   createdAt: string;
+};
+
+export type ApiTeamUser = Pick<ApiUser, "_id" | "name" | "email" | "role">;
+
+export type ApiTeam = {
+  _id: string;
+  name: string;
+  owner: ApiTeamUser;
+  members: ApiTeamUser[];
+  createdAt: string;
+  updatedAt: string;
 };
 
 export async function login(email: string, password: string) {
@@ -58,7 +69,7 @@ export function uploadFiles(files: File[]) {
   return request<ApiFile[]>("/files/upload", { method: "POST", body: formData });
 }
 
-export function createUser(name: string, email: string, password: string, role: "user" | "admin" = "user") {
+export function createUser(name: string, email: string, password: string, role: "user" | "admin" | "designer" = "user") {
   return request<ApiUser>("/users", {
     method: "POST",
     body: JSON.stringify({ name, email, password, role })
@@ -74,4 +85,49 @@ export async function signup(name: string, email: string, password: string) {
   const payload = (await response.json().catch(() => ({}))) as { success?: boolean; token?: string; data?: ApiUser; message?: string };
   if (!response.ok || !payload.success || !payload.token || !payload.data) throw new Error(payload.message || "Unable to create account");
   return { token: payload.token, data: payload.data };
+}
+
+export function listUsers(role?: ApiUser["role"]) {
+  const query = role ? `?role=${encodeURIComponent(role)}` : "";
+  return request<ApiUser[]>(`/users${query}`);
+}
+
+export function listTeams() {
+  return request<ApiTeam[]>("/teams");
+}
+
+export function createTeam(name: string, memberIds: string[]) {
+  return request<ApiTeam>("/teams", {
+    method: "POST",
+    body: JSON.stringify({ name, memberIds })
+  });
+}
+
+export function updateTeam(teamId: string, name: string, memberIds: string[]) {
+  return request<ApiTeam>(`/teams/${teamId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name, memberIds })
+  });
+}
+
+export function deleteTeam(teamId: string) {
+  return request<{ _id: string }>(`/teams/${teamId}`, { method: "DELETE" });
+}
+
+export function addTeamMember(teamId: string, userId: string) {
+  return request<ApiTeam>(`/teams/${teamId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ userId })
+  });
+}
+
+export function removeTeamMember(teamId: string, userId: string) {
+  return request<ApiTeam>(`/teams/${teamId}/members/${userId}`, { method: "DELETE" });
+}
+
+export function shareFileWithTeam(fileId: string, teamId: string, permission: "view" | "edit" = "view") {
+  return request<{ teamId: string; teamName: string; sharedCount: number; skippedCount: number }>(`/shares/files/${fileId}/team/${teamId}`, {
+    method: "POST",
+    body: JSON.stringify({ permission })
+  });
 }
