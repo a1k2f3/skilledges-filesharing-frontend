@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { downloadFile, listTeams, shareFileWithTeam, type ApiTeam } from "@/components/api";
+import { downloadFile, listDesigners, listReceivedShares, shareFileWithUser, type ApiFileShare, type ApiUser } from "@/components/api";
 import { getFileUrl } from "@/components/file-store";
 import { usePortal } from "@/components/portal-context";
 import { PageHeader } from "@/components/portal-ui";
@@ -17,40 +17,48 @@ function FileDownload({ fileKey, legacyUrl, name }: { fileKey?: string; legacyUr
 	}, [fileKey, isApiFile]);
 
 	if (isApiFile) return <button className="button button-secondary" type="button" onClick={() => void downloadFile(fileKey!, name)}>Download file</button>;
-	return url ? <a className="button button-secondary" href={url} download={name}>Download ↓</a> : <span className="muted">Preparing file...</span>;
+	return url ? <a className="button button-secondary" href={url} download={name}>Download</a> : <span className="muted">Preparing file...</span>;
 }
 
 export default function FilesPage() {
 	const { user, files, orders } = usePortal();
-	const [teams, setTeams] = useState<ApiTeam[]>([]);
-	const [selectedFile, setSelectedFile] = useState("");
-	const [selectedTeam, setSelectedTeam] = useState("");
-	const [sharing, setSharing] = useState(false);
-	const [shareMessage, setShareMessage] = useState("");
-	const visible = user.role === "admin" ? files : files.filter((file) => user.role === "customer" ? file.customer === user.name : file.designer === user.name);
+	const [designers, setDesigners] = useState<ApiUser[]>([]);
+	const [receivedShares, setReceivedShares] = useState<ApiFileShare[]>([]);
+	const [selectedDesigners, setSelectedDesigners] = useState<Record<string, string>>({});
+	const [sharingFile, setSharingFile] = useState("");
+	const [shareMessages, setShareMessages] = useState<Record<string, string>>({});
+	const [loadError, setLoadError] = useState("");
+	const receivedFiles = user.role === "admin"
+		? files.filter((file) => file.ownerId !== user.id && file.ownerRole !== "admin")
+		: user.role === "customer" ? files : [];
 	const assignedSourceFiles = user.role === "designer" ? orders.filter((order) => order.designer === user.name && (order.sourceFiles?.length || order.fileUrl)) : [];
 
 	useEffect(() => {
-		if (user.role === "admin") void listTeams().then(setTeams).catch((error) => setShareMessage(error instanceof Error ? error.message : "Unable to load teams."));
+		if (user.role === "admin") void listDesigners().then(setDesigners).catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to load designers."));
+		if (user.role === "designer") void listReceivedShares().then(setReceivedShares).catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to load received files."));
 	}, [user.role]);
 
-	async function sendToTeam(event: React.FormEvent<HTMLFormElement>) {
+	async function sendToDesigner(event: React.FormEvent<HTMLFormElement>, fileKey: string) {
 		event.preventDefault();
-		if (!selectedFile || !selectedTeam) return;
-		setSharing(true);
-		setShareMessage("");
+		const designerId = selectedDesigners[fileKey];
+		if (!designerId) return;
+		setSharingFile(fileKey);
+		setShareMessages((current) => ({ ...current, [fileKey]: "" }));
 		try {
-			const result = await shareFileWithTeam(selectedFile, selectedTeam);
-			setShareMessage(`${result.sharedCount} member${result.sharedCount === 1 ? "" : "s"} received the file${result.skippedCount ? `; ${result.skippedCount} already had access` : ""}.`);
+			await shareFileWithUser(fileKey, designerId);
+			const designerName = designers.find((designer) => designer._id === designerId)?.name || "designer";
+			setShareMessages((current) => ({ ...current, [fileKey]: `Shared with ${designerName}.` }));
 		} catch (error) {
-			setShareMessage(error instanceof Error ? error.message : "Unable to send file to team.");
+			setShareMessages((current) => ({ ...current, [fileKey]: error instanceof Error ? error.message : "Unable to share file." }));
 		} finally {
-			setSharing(false);
+			setSharingFile("");
 		}
 	}
 
-	return <><PageHeader eyebrow="File library" title="Production files" description="Download source artwork and completed digitized files." />
-		{user.role === "admin" && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Team delivery</p><h2>Send a file to a team</h2></div></div><form className="form-grid" onSubmit={sendToTeam}><label>File<select required value={selectedFile} onChange={(event) => setSelectedFile(event.target.value)}><option value="">Select a file</option>{files.map((file) => <option key={file.fileKey || file.name} value={file.fileKey}>{file.name}</option>)}</select></label><label>Team<select required value={selectedTeam} onChange={(event) => setSelectedTeam(event.target.value)}><option value="">Select a team</option>{teams.map((team) => <option key={team._id} value={team._id}>{team.name} ({team.members.length} members)</option>)}</select></label><div className="form-footer"><button className="button button-primary" type="submit" disabled={sharing || !teams.length || !files.length}>{sharing ? "Sending..." : "Send to team"}</button></div>{shareMessage && <p className={shareMessage.includes("received") ? "form-success" : "form-error"}>{shareMessage}</p>}</form></section>}
-		{user.role === "designer" && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Admin handoff</p><h2>Assigned source files</h2></div><span className="team-count">{assignedSourceFiles.reduce((count, order) => count + (order.sourceFiles?.length || 1), 0)} files</span></div><div className="file-list">{assignedSourceFiles.length ? assignedSourceFiles.flatMap((order) => order.sourceFiles?.length ? order.sourceFiles.map((file) => <div className="file-row" key={`${order.id}-${file.fileKey}`}><div className="file-icon">↑</div><div className="file-meta"><strong>{file.name}</strong><span>{order.format} · {order.customer} · Order {order.id}</span></div><FileDownload fileKey={file.fileKey} name={file.name} /></div>) : [<div className="file-row" key={order.id}><div className="file-icon">↑</div><div className="file-meta"><strong>{order.downloadName || order.name}</strong><span>{order.format} · {order.customer} · Order {order.id}</span></div><FileDownload fileKey={order.fileKey} legacyUrl={order.fileUrl} name={order.downloadName || `${order.id}-${order.name}`} /></div>]) : <div className="empty-state"><span className="empty-icon">↑</span><strong>No source files assigned</strong><p>Files sent by admin will appear here.</p></div>}</div></section>}
-		<section className="panel"><div className="panel-heading"><div><p className="eyebrow">Output library</p><h2>Completed files</h2></div></div><div className="file-list">{visible.length ? visible.map((file) => <div className="file-row" key={`${file.name}-${file.date}`}><div className="file-icon">▧</div><div className="file-meta"><strong>{file.name}</strong><span>{file.format} · {file.customer} · {file.date}</span></div><FileDownload fileKey={file.fileKey} legacyUrl={file.fileUrl} name={file.name} /></div>) : <div className="empty-state"><span className="empty-icon">▧</span><strong>No completed files yet</strong><p>Approved production files will be available here.</p></div>}</div></section></>;
+	return <><PageHeader eyebrow="File library" title="Received files" description={user.role === "admin" ? "Files submitted by customers and designers." : "Files shared with you and files assigned to your work."} />
+		{loadError && <p className="form-error">{loadError}</p>}
+		{user.role === "designer" && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Shared by admin</p><h2>Received files</h2></div><span className="team-count">{receivedShares.length} files</span></div><div className="file-list">{receivedShares.length ? receivedShares.map((share) => <div className="file-row" key={share._id}><div className="file-icon">↓</div><div className="file-meta"><strong>{share.file.originalName}</strong><span>From {share.sharedBy?.name || "Admin"} · {new Date(share.createdAt).toLocaleDateString()}</span></div><FileDownload fileKey={share.file._id} name={share.file.originalName} /></div>) : <div className="empty-state"><strong>No files shared with you</strong><p>Files sent by admin will appear here.</p></div>}</div></section>}
+		{user.role === "designer" && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Order handoff</p><h2>Assigned source files</h2></div><span className="team-count">{assignedSourceFiles.reduce((count, order) => count + (order.sourceFiles?.length || 1), 0)} files</span></div><div className="file-list">{assignedSourceFiles.length ? assignedSourceFiles.flatMap((order) => order.sourceFiles?.length ? order.sourceFiles.map((file) => <div className="file-row" key={`${order.id}-${file.fileKey}`}><div className="file-icon">↑</div><div className="file-meta"><strong>{file.name}</strong><span>{order.format} · {order.customer} · Order {order.id}</span></div><FileDownload fileKey={file.fileKey} name={file.name} /></div>) : [<div className="file-row" key={order.id}><div className="file-icon">↑</div><div className="file-meta"><strong>{order.downloadName || order.name}</strong><span>{order.format} · {order.customer} · Order {order.id}</span></div><FileDownload fileKey={order.fileKey} legacyUrl={order.fileUrl} name={order.downloadName || `${order.id}-${order.name}`} /></div>]) : <div className="empty-state"><strong>No source files assigned</strong><p>Files attached to your assigned orders will appear here.</p></div>}</div></section>}
+		{(user.role === "admin" || user.role === "customer") && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Incoming uploads</p><h2>{user.role === "admin" ? "Files from users" : "Your uploaded files"}</h2></div><span className="team-count">{receivedFiles.length} files</span></div><div className="file-list">{receivedFiles.length ? receivedFiles.map((file) => <div className="file-row" key={file.fileKey || file.name}><div className="file-icon">↓</div><div className="file-meta"><strong>{file.name}</strong><span>{user.role === "admin" ? `From ${file.ownerName || "Unknown user"} · ` : ""}{file.format} · {new Date(file.date).toLocaleDateString()}</span></div>{user.role === "admin" && file.fileKey && <form className="file-share-control" onSubmit={(event) => void sendToDesigner(event, file.fileKey!)}><select aria-label={`Choose designer for ${file.name}`} required value={selectedDesigners[file.fileKey] || ""} onChange={(event) => setSelectedDesigners((current) => ({ ...current, [file.fileKey!]: event.target.value }))}><option value="">Share with designer</option>{designers.map((designer) => <option key={designer._id} value={designer._id}>{designer.name}</option>)}</select><button className="button button-primary" type="submit" disabled={sharingFile === file.fileKey || !designers.length}>{sharingFile === file.fileKey ? "Sharing..." : "Share"}</button>{shareMessages[file.fileKey] && <span className={shareMessages[file.fileKey].startsWith("Shared") ? "form-success" : "form-error"}>{shareMessages[file.fileKey]}</span>}</form>}{user.role !== "admin" && <FileDownload fileKey={file.fileKey} legacyUrl={file.fileUrl} name={file.name} />}</div>) : <div className="empty-state"><strong>No files received yet</strong><p>New uploads will appear here.</p></div>}</div></section>}
+	</>;
 }

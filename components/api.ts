@@ -25,11 +25,20 @@ export type ApiUser = {
 
 export type ApiFile = {
   _id: string;
+  owner?: Pick<ApiUser, "_id" | "name" | "email" | "role">;
   originalName: string;
   secureUrl: string;
   format: string | null;
   mimeType: string;
   size: number;
+  createdAt: string;
+};
+
+export type ApiFileShare = {
+  _id: string;
+  file: Pick<ApiFile, "_id" | "originalName" | "secureUrl" | "size" | "mimeType" | "format">;
+  sharedBy?: Pick<ApiUser, "_id" | "name" | "email">;
+  sharedWith?: Pick<ApiUser, "_id" | "name" | "email" | "role">;
   createdAt: string;
 };
 
@@ -138,6 +147,21 @@ export function shareFileWithTeam(fileId: string, teamId: string, permission: "v
     method: "POST",
     body: JSON.stringify({ permission })
   });
+}
+
+export function shareFileWithUser(fileId: string, userId: string, permission: "view" | "edit" = "view") {
+  return request<ApiFileShare>(`/shares/files/${fileId}`, {
+    method: "POST",
+    body: JSON.stringify({ userId, permission })
+  });
+}
+
+export function listReceivedShares() {
+  return request<ApiFileShare[]>("/shares/received");
+}
+
+export function listSentShares() {
+  return request<ApiFileShare[]>("/shares/sent");
 }
 
 export function listDesigners() {

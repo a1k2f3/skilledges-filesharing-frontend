@@ -12,7 +12,7 @@ export type Order = {
 };
 export type CompletedFile = {
   name: string; fileUrl: string; fileKey?: string; format: string; order: string;
-  customer: string; designer: string; date: string;
+  customer: string; designer: string; date: string; ownerId?: string; ownerName?: string; ownerRole?: string;
 };
 
 const defaultUsers: Record<string, User> = {
@@ -40,7 +40,7 @@ function mapUser(user: ApiUser): User {
 }
 
 function mapFile(file: ApiFile): CompletedFile {
-  return { name: file.originalName, fileUrl: file.secureUrl, fileKey: file._id, format: file.format || file.mimeType, order: "", customer: "", designer: "", date: file.createdAt };
+  return { name: file.originalName, fileUrl: file.secureUrl, fileKey: file._id, format: file.format || file.mimeType, order: "", customer: "", designer: "", date: file.createdAt, ownerId: file.owner?._id, ownerName: file.owner?.name, ownerRole: file.owner?.role };
 }
 const PortalContext = createContext<PortalContextValue | null>(null);
 

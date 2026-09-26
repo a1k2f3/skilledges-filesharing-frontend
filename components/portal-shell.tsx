@@ -7,7 +7,7 @@ import { usePortal } from "./portal-context";
 const links = [
   ["/dashboard", "Overview", "▦"], ["/upload", "Upload design", "＋"],
   ["/orders", "My designs", "☷"], ["/designers", "Designers", "✦"],
-  ["/teams", "Teams", "♧"], ["/files", "Download files", "↓"], ["/settings", "Settings", "⚙"],
+  ["/teams", "Teams", "♧"], ["/files", "Received files", "↓"], ["/files/sent", "Sent files", "↑"], ["/settings", "Settings", "⚙"],
 ];
 
 export function PortalShell({ children }: { children: React.ReactNode }) {
@@ -19,7 +19,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
       <Link href="/dashboard" className="brand brand-light">SKILLS <span>EDGE</span></Link>
       <div className="workspace-label">Production workspace</div>
       <div className="user-chip"><div className="avatar">{user.name.slice(0, 1)}</div><div><strong>{user.name}</strong><small>{user.role}</small></div></div>
-      <nav className="sidebar-nav" aria-label="Primary navigation">{links.filter(([href], index) => user.role === "admin" || (index !== 3 && href !== "/teams")).map(([href, label, icon]) => <Link key={href} href={href} className={pathname === href || (href === "/teams" && pathname.startsWith("/teams/")) ? "active" : ""}><span className="nav-icon">{icon}</span>{label}</Link>)}</nav>
+      <nav className="sidebar-nav" aria-label="Primary navigation">{links.filter(([href], index) => user.role === "admin" || (index !== 3 && href !== "/teams")).filter(([href]) => (user.role === "admin" || user.role === "designer") || href !== "/files/sent").map(([href, label, icon]) => <Link key={href} href={href} className={pathname === href || (href === "/teams" && pathname.startsWith("/teams/")) || (href === "/files/sent" && pathname.startsWith("/files/sent")) ? "active" : ""}><span className="nav-icon">{icon}</span>{label}</Link>)}</nav>
       <button className="signout" onClick={signOut}><span>↪</span> Sign out</button>
     </aside>
     <main className="content"><header className="mobile-header"><Link href="/dashboard" className="brand brand-dark">SKILLS <span>EDGE</span></Link><button className="mobile-signout" onClick={signOut}>Sign out</button></header>{children}</main>
