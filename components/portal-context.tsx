@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { getCurrentUser, listFiles, type ApiFile, type ApiUser } from "./api";
 
 export type Role = "admin" | "customer" | "designer";
@@ -32,6 +32,7 @@ type PortalContextValue = {
   user: User; users: Record<string, User>; orders: Order[]; files: CompletedFile[];
   addOrder: (order: Order) => void; updateOrder: (id: string, patch: Partial<Order>) => void;
   removeOrder: (id: string) => void; addFile: (file: CompletedFile) => void;
+  refreshFiles: () => Promise<void>;
   updatePassword: (password: string) => void; logout: () => void;
 };
 
@@ -50,6 +51,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<Record<string, User>>(defaultUsers);
   const [orders, setOrders] = useState<Order[]>([]);
   const [files, setFiles] = useState<CompletedFile[]>([]);
+  const refreshFiles = useCallback(async () => {
+    const nextFiles = (await listFiles()).map(mapFile);
+    setFiles(nextFiles);
+    localStorage.setItem("skillsEdgeFiles", JSON.stringify(nextFiles));
+  }, []);
 
   useEffect(() => {
     const hydrate = async () => {
@@ -101,7 +107,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const logout = () => { setUser(null); localStorage.removeItem("skillsEdgeToken"); localStorage.removeItem("skillsEdgeCurrentSession"); };
 
   if (!ready || !user) return null;
-  return <PortalContext.Provider value={{ user, users, orders, files, addOrder, updateOrder, removeOrder, addFile, updatePassword, logout }}>{children}</PortalContext.Provider>;
+  return <PortalContext.Provider value={{ user, users, orders, files, addOrder, updateOrder, removeOrder, addFile, refreshFiles, updatePassword, logout }}>{children}</PortalContext.Provider>;
 }
 
 export function usePortal() {

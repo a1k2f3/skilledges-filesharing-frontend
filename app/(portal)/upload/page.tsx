@@ -8,12 +8,13 @@ import { uploadFiles } from "@/components/api";
 import { PageHeader } from "@/components/portal-ui";
 
 export default function UploadPage() {
-  const { user, addOrder } = usePortal(); const router = useRouter();
+  const { user, addOrder, refreshFiles } = usePortal(); const router = useRouter();
   const [customer, setCustomer] = useState(user.role === "customer" ? user.name : "Wilcom"); const [name, setName] = useState(""); const [format, setFormat] = useState("DST"); const [notes, setNotes] = useState(""); const [files, setFiles] = useState<File[]>([]); const [error, setError] = useState("");
   async function submit() {
     if (!name.trim()) { setError("Add a design name before sending the order."); return; }
     try {
       const uploadedFiles = files.length ? await uploadFiles(files) : [];
+      if (uploadedFiles.length) await refreshFiles();
       const sourceFiles = uploadedFiles.length
         ? uploadedFiles.map((file) => ({ fileKey: file._id, name: file.originalName }))
         : await Promise.all(files.map(async (file) => ({ fileKey: await saveFile(file), name: file.name })));

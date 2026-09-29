@@ -131,6 +131,17 @@ export function deleteTeam(teamId: string) {
   return request<{ _id: string }>(`/teams/${teamId}`, { method: "DELETE" });
 }
 
+export function bulkDeleteFiles(options: { fileIds?: string[]; deleteAll?: boolean }) {
+  return request<{ deletedCount: number; failedCount: number }>("/files/admin/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify(options)
+  });
+}
+
+export function deactivateDesigner(designerId: string) {
+  return request<{ _id: string; isActive: boolean }>(`/users/designers/${designerId}`, { method: "DELETE" });
+}
+
 export function addTeamMember(teamId: string, userId: string) {
   return request<ApiTeam>(`/teams/${teamId}/members`, {
     method: "POST",
@@ -182,4 +193,13 @@ export async function downloadFile(fileId: string, filename: string) {
   link.click();
   link.remove();
   URL.revokeObjectURL(blobUrl);
+}
+
+export async function getFilePreviewUrl(fileId: string) {
+  const token = typeof window === "undefined" ? null : localStorage.getItem("skillsEdgeToken");
+  const response = await fetch(`${API_URL}/files/${fileId}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+  });
+  if (!response.ok) throw new Error("Unable to preview file");
+  return URL.createObjectURL(await response.blob());
 }
