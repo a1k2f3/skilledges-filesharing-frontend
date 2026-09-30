@@ -1,3 +1,5 @@
+import JSZip from "jszip";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL.replace(/\/api\/?$/, "");
 
@@ -237,6 +239,36 @@ export async function downloadFile(fileId: string, filename: string) {
   const link = document.createElement("a");
   link.href = blobUrl;
   link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+
+export async function downloadFilesAsZip(files: { fileId: string; filename: string }[], archiveName: string) {
+  const token = typeof window === "undefined" ? null : localStorage.getItem("skillsEdgeToken");
+  const zip = new JSZip();
+  const filenameCounts = new Map<string, number>();
+  await Promise.all(files.map(async (file) => {
+    const response = await fetch(`${API_URL}/files/${file.fileId}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error(payload.message || `Unable to download ${file.filename}`);
+    }
+    const extensionIndex = file.filename.lastIndexOf(".");
+    const baseName = extensionIndex > 0 ? file.filename.slice(0, extensionIndex) : file.filename;
+    const extension = extensionIndex > 0 ? file.filename.slice(extensionIndex) : "";
+    const count = (filenameCounts.get(file.filename) || 0) + 1;
+    filenameCounts.set(file.filename, count);
+    const filename = count === 1 ? file.filename : `${baseName} (${count})${extension}`;
+    zip.file(filename, await response.blob());
+  }));
+  const blobUrl = URL.createObjectURL(await zip.generateAsync({ type: "blob" }));
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = archiveName;
   document.body.appendChild(link);
   link.click();
   link.remove();

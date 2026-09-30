@@ -12,19 +12,42 @@ export function FileImagePreview({ fileId, name, mimeType, legacyUrl }: {
 	mimeType?: string;
 	legacyUrl?: string;
 }) {
-	const [previewUrl, setPreviewUrl] = useState("");
+	const [preview, setPreview] = useState<{ key: string; url: string } | null>(null);
 	const [isOpen, setIsOpen] = useState(false);
-	const [error, setError] = useState("");
+	const [previewError, setPreviewError] = useState<{ key: string; message: string } | null>(null);
 	const isImage = mimeType?.startsWith("image/") || imageExtension.test(name);
+	const previewKey = fileId || legacyUrl || name;
+	const previewUrl = preview?.key === previewKey ? preview.url : "";
+	const error = previewError?.key === previewKey ? previewError.message : "";
 
-	useEffect(() => () => {
-		if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-	}, [previewUrl]);
+	useEffect(() => {
+		if (!isImage) return;
+		let cancelled = false;
+		let loadedUrl = "";
+		const loadPreview = async () => {
+			try {
+				const url = legacyUrl || (fileId ? await getFilePreviewUrl(fileId) : "");
+				if (!url) throw new Error("Preview is unavailable for this file");
+				loadedUrl = url;
+				if (cancelled) {
+					if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+					return;
+				}
+				setPreview({ key: previewKey, url });
+			} catch (previewError) {
+				if (!cancelled) setPreviewError({ key: previewKey, message: previewError instanceof Error ? previewError.message : "Unable to preview image." });
+			}
+		};
+		void loadPreview();
+		return () => {
+			cancelled = true;
+			if (loadedUrl.startsWith("blob:")) URL.revokeObjectURL(loadedUrl);
+		};
+	}, [fileId, isImage, legacyUrl, previewKey]);
 
-	if (!isImage) return null;
+	if (!isImage) return <div className="file-icon">↓</div>;
 
 	async function openPreview() {
-		setError("");
 		if (previewUrl) {
 			setIsOpen(true);
 			return;
@@ -32,15 +55,17 @@ export function FileImagePreview({ fileId, name, mimeType, legacyUrl }: {
 		try {
 			const url = legacyUrl || (fileId ? await getFilePreviewUrl(fileId) : "");
 			if (!url) throw new Error("Preview is unavailable for this file");
-			setPreviewUrl(url);
+			setPreview({ key: previewKey, url });
 			setIsOpen(true);
 		} catch (previewError) {
-			setError(previewError instanceof Error ? previewError.message : "Unable to preview image.");
+			setPreviewError({ key: previewKey, message: previewError instanceof Error ? previewError.message : "Unable to preview image." });
 		}
 	}
 
 	return <>
-		<button className="text-button preview-trigger" type="button" onClick={() => void openPreview()}>Preview image</button>
+		<button className="preview-thumbnail" type="button" onClick={() => void openPreview()} disabled={!previewUrl} aria-label={`Preview ${name}`} title={error || `Preview ${name}`}>
+			{previewUrl ? <Image src={previewUrl} alt={name} width={160} height={120} unoptimized /> : <span>{error ? "!" : "…"}</span>}
+		</button>
 		{error && <span className="form-error preview-error">{error}</span>}
 		{isOpen && <div className="file-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsOpen(false); }}>
 			<section className="file-preview-dialog" role="dialog" aria-modal="true" aria-label={`Image preview: ${name}`}>
