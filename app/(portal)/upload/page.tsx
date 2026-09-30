@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveFile } from "@/components/file-store";
 import { usePortal, type Order } from "@/components/portal-context";
-import { uploadFiles } from "@/components/api";
+import { shareFileWithAdmins, uploadFiles } from "@/components/api";
 import { PageHeader } from "@/components/portal-ui";
 
 export default function UploadPage() {
@@ -14,12 +13,13 @@ export default function UploadPage() {
     if (!name.trim()) { setError("Add a design name before sending the order."); return; }
     try {
       const uploadedFiles = files.length ? await uploadFiles(files) : [];
+      if (user.role !== "admin") await Promise.all(uploadedFiles.map((file) => shareFileWithAdmins(file._id)));
       if (uploadedFiles.length) await refreshFiles();
       const sourceFiles = uploadedFiles.length
         ? uploadedFiles.map((file) => ({ fileKey: file._id, name: file.originalName }))
-        : await Promise.all(files.map(async (file) => ({ fileKey: await saveFile(file), name: file.name })));
+        : [];
     const order: Order = { id: `SE-${Date.now().toString().slice(-6)}`, customer, name: name.trim(), format, status: "Pending", designer: "", date: new Date().toLocaleString(), notes, fileUrl: "", fileKey: sourceFiles[0]?.fileKey, downloadName: files[0]?.name || "", sourceFiles, sentToCustomer: "" };
-    addOrder(order); router.push("/orders");
+    await addOrder(order); router.push("/orders");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Unable to upload files.");
     }

@@ -1,13 +1,14 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { getCurrentUser, listFiles, type ApiFile, type ApiUser } from "./api";
+import { io } from "socket.io-client";
+import { assignOrder as assignOrderRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listOrders, listReceivedShares, SOCKET_URL, updateOrder as updateOrderRequest, type ApiFile, type ApiFileShare, type ApiOrder, type ApiUser } from "./api";
 
 export type Role = "admin" | "customer" | "designer";
 export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string };
 export type Order = {
   id: string; customer: string; name: string; format: string; status: string;
-  designer: string; date: string; notes: string; fileUrl: string; fileKey?: string;
+  designer: string; designerId?: string; date: string; notes: string; fileUrl: string; fileKey?: string;
   downloadName: string; sourceFiles?: { fileKey: string; name: string }[]; sentToCustomer: string;
 };
 export type CompletedFile = {
@@ -29,10 +30,10 @@ const defaultUsers: Record<string, User> = {
 };
 
 type PortalContextValue = {
-  user: User; users: Record<string, User>; orders: Order[]; files: CompletedFile[];
-  addOrder: (order: Order) => void; updateOrder: (id: string, patch: Partial<Order>) => void;
-  removeOrder: (id: string) => void; addFile: (file: CompletedFile) => void;
-  refreshFiles: () => Promise<void>;
+  user: User; users: Record<string, User>; orders: Order[]; files: CompletedFile[]; receivedShares: ApiFileShare[];
+  addOrder: (order: Order) => Promise<void>; updateOrder: (id: string, patch: Partial<Order>) => Promise<void>;
+  assignOrder: (id: string, designerId: string) => Promise<void>; removeOrder: (id: string) => Promise<void>; addFile: (file: CompletedFile) => void;
+  refreshFiles: () => Promise<void>; refreshReceivedShares: () => Promise<void>;
   updatePassword: (password: string) => void; logout: () => void;
 };
 
@@ -43,6 +44,32 @@ function mapUser(user: ApiUser): User {
 function mapFile(file: ApiFile): CompletedFile {
   return { name: file.originalName, fileUrl: file.secureUrl, fileKey: file._id, format: file.format || file.mimeType, order: "", customer: "", designer: "", date: file.createdAt, ownerId: file.owner?._id, ownerName: file.owner?.name, ownerRole: file.owner?.role };
 }
+
+function mapOrder(order: ApiOrder): Order {
+  const sourceFiles = (order.sourceFiles || []).flatMap((item) => {
+    if (!item.file) return [];
+    const fileKey = typeof item.file === "string" ? item.file : item.file._id;
+    const fileName = typeof item.file === "string" ? "File" : item.file.originalName;
+    return [{ fileKey, name: item.name || fileName }];
+  });
+  return {
+    id: order.orderNumber,
+    customer: order.customerName,
+    name: order.designName,
+    format: order.format,
+    status: order.status,
+    designer: order.assignedDesigner?.name || "",
+    designerId: order.assignedDesigner?._id,
+    date: new Date(order.createdAt).toLocaleString(),
+    notes: order.notes || "",
+    fileUrl: "",
+    fileKey: sourceFiles[0]?.fileKey,
+    downloadName: sourceFiles[0]?.name || "",
+    sourceFiles,
+    sentToCustomer: order.sentToCustomer || ""
+  };
+}
+
 const PortalContext = createContext<PortalContextValue | null>(null);
 
 export function PortalProvider({ children }: { children: ReactNode }) {
@@ -51,10 +78,17 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<Record<string, User>>(defaultUsers);
   const [orders, setOrders] = useState<Order[]>([]);
   const [files, setFiles] = useState<CompletedFile[]>([]);
+  const [receivedShares, setReceivedShares] = useState<ApiFileShare[]>([]);
   const refreshFiles = useCallback(async () => {
     const nextFiles = (await listFiles()).map(mapFile);
     setFiles(nextFiles);
     localStorage.setItem("skillsEdgeFiles", JSON.stringify(nextFiles));
+  }, []);
+  const refreshReceivedShares = useCallback(async () => {
+    setReceivedShares(await listReceivedShares());
+  }, []);
+  const refreshOrders = useCallback(async () => {
+    setOrders((await listOrders()).map(mapOrder));
   }, []);
 
   useEffect(() => {
@@ -64,19 +98,18 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       const savedUsers = localStorage.getItem("skillsEdgeUsers");
       const today = new Date().toDateString();
       if (localStorage.getItem("skillsEdgeLastDate") !== today) {
-        localStorage.setItem("skillsEdgeOrders", "[]"); localStorage.setItem("skillsEdgeFiles", "[]");
+        localStorage.setItem("skillsEdgeFiles", "[]");
         localStorage.setItem("skillsEdgeLastDate", today);
       }
       if (savedUsers) setUsers(JSON.parse(savedUsers));
       if (!token || !saved) { window.location.href = "/"; return; }
-      const storedOrders = JSON.parse(localStorage.getItem("skillsEdgeOrders") || "[]") as Order[];
-      const cleanOrders = storedOrders.map(({ fileUrl, ...order }) => ({ ...order, fileUrl: fileUrl?.startsWith("data:") ? "" : fileUrl || "" }));
-      setOrders(cleanOrders);
-      localStorage.setItem("skillsEdgeOrders", JSON.stringify(cleanOrders));
       try {
-        const [currentUser, apiFiles] = await Promise.all([getCurrentUser(), listFiles()]);
+        const [currentUser, apiFiles, apiOrders] = await Promise.all([getCurrentUser(), listFiles(), listOrders()]);
+        const apiShares = await listReceivedShares().catch(() => []);
         const nextUser = mapUser(currentUser);
         const nextFiles = apiFiles.map(mapFile);
+        setOrders(apiOrders.map(mapOrder));
+        setReceivedShares(apiShares);
         setUser(nextUser);
         setFiles(nextFiles);
         localStorage.setItem("skillsEdgeCurrentSession", JSON.stringify(nextUser));
@@ -91,11 +124,58 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     void hydrate();
   }, []);
 
-  const persistOrders = (next: Order[]) => { setOrders(next); localStorage.setItem("skillsEdgeOrders", JSON.stringify(next)); };
+  useEffect(() => {
+    if (!user) return;
+    const token = localStorage.getItem("skillsEdgeToken");
+    if (!token) return;
+    const socket = io(SOCKET_URL, { auth: { token }, autoConnect: false });
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const refreshWorkspace = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void refreshFiles().catch(() => undefined);
+        void refreshReceivedShares().catch(() => undefined);
+        void refreshOrders().catch(() => undefined);
+      }, 75);
+    };
+    socket.on("connect", refreshWorkspace);
+    socket.on("file:uploaded", refreshWorkspace);
+    socket.on("file:deleted", refreshWorkspace);
+    socket.on("file:shared", refreshWorkspace);
+    socket.on("file:share-revoked", refreshWorkspace);
+    socket.on("order:updated", () => { void refreshOrders().catch(() => undefined); });
+    socket.connect();
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      socket.disconnect();
+    };
+  }, [user, refreshFiles, refreshOrders, refreshReceivedShares]);
+
   const persistFiles = (next: CompletedFile[]) => { setFiles(next); localStorage.setItem("skillsEdgeFiles", JSON.stringify(next)); };
-  const addOrder = (order: Order) => persistOrders([order, ...orders]);
-  const updateOrder = (id: string, patch: Partial<Order>) => persistOrders(orders.map((order) => order.id === id ? { ...order, ...patch } : order));
-  const removeOrder = (id: string) => { persistOrders(orders.filter((order) => order.id !== id)); persistFiles(files.filter((file) => !file.order.startsWith(id))); };
+  const addOrder = async (order: Order) => {
+    const created = await createOrderRequest({
+      orderNumber: order.id,
+      customerName: order.customer,
+      designName: order.name,
+      format: order.format,
+      notes: order.notes,
+      sourceFiles: order.sourceFiles || []
+    });
+    setOrders((current) => [mapOrder(created), ...current.filter((item) => item.id !== created.orderNumber)]);
+  };
+  const updateOrder = async (id: string, patch: Partial<Order>) => {
+    const updated = await updateOrderRequest(id, { status: patch.status || "", sentToCustomer: patch.sentToCustomer });
+    setOrders((current) => current.map((order) => order.id === id ? { ...mapOrder(updated), fileUrl: order.fileUrl, downloadName: order.downloadName } : order));
+  };
+  const assignOrder = async (id: string, designerId: string) => {
+    const updated = await assignOrderRequest(id, designerId);
+    setOrders((current) => current.map((order) => order.id === id ? mapOrder(updated) : order));
+  };
+  const removeOrder = async (id: string) => {
+    await deleteOrderRequest(id);
+    setOrders((current) => current.filter((order) => order.id !== id));
+    persistFiles(files.filter((file) => !file.order.startsWith(id)));
+  };
   const addFile = (file: CompletedFile) => persistFiles([file, ...files]);
   const updatePassword = (password: string) => {
     if (!user) return;
@@ -107,7 +187,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const logout = () => { setUser(null); localStorage.removeItem("skillsEdgeToken"); localStorage.removeItem("skillsEdgeCurrentSession"); };
 
   if (!ready || !user) return null;
-  return <PortalContext.Provider value={{ user, users, orders, files, addOrder, updateOrder, removeOrder, addFile, refreshFiles, updatePassword, logout }}>{children}</PortalContext.Provider>;
+  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, addOrder, updateOrder, assignOrder, removeOrder, addFile, refreshFiles, refreshReceivedShares, updatePassword, logout }}>{children}</PortalContext.Provider>;
 }
 
 export function usePortal() {

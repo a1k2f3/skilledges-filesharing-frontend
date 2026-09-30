@@ -1,4 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL.replace(/\/api\/?$/, "");
 
 type ApiResponse<T> = { success: boolean; data?: T; message?: string };
 
@@ -32,6 +33,20 @@ export type ApiFile = {
   mimeType: string;
   size: number;
   createdAt: string;
+};
+
+export type ApiOrder = {
+  _id: string;
+  orderNumber: string;
+  customerName: string;
+  designName: string;
+  format: string;
+  status: string;
+  assignedDesigner?: Pick<ApiUser, "_id" | "name" | "email"> | null;
+  createdAt: string;
+  notes: string;
+  sourceFiles: { file: { _id: string; originalName: string } | string; name?: string }[];
+  sentToCustomer: string;
 };
 
 export type ApiFileShare = {
@@ -70,6 +85,32 @@ export function getCurrentUser() {
 
 export function listFiles() {
   return request<ApiFile[]>("/files");
+}
+
+export function listOrders() {
+  return request<ApiOrder[]>("/orders");
+}
+
+export function createOrder(order: { orderNumber: string; customerName: string; designName: string; format: string; notes: string; sourceFiles: { fileKey: string; name: string }[] }) {
+  return request<ApiOrder>("/orders", { method: "POST", body: JSON.stringify(order) });
+}
+
+export function assignOrder(orderNumber: string, designerId: string) {
+  return request<ApiOrder>(`/orders/${encodeURIComponent(orderNumber)}/assignment`, {
+    method: "PATCH",
+    body: JSON.stringify({ designerId })
+  });
+}
+
+export function updateOrder(orderNumber: string, update: { status: string; sentToCustomer?: string }) {
+  return request<ApiOrder>(`/orders/${encodeURIComponent(orderNumber)}`, {
+    method: "PATCH",
+    body: JSON.stringify(update)
+  });
+}
+
+export function deleteOrder(orderNumber: string) {
+  return request<{ orderNumber: string }>(`/orders/${encodeURIComponent(orderNumber)}`, { method: "DELETE" });
 }
 
 export function uploadFiles(files: File[]) {
@@ -167,6 +208,10 @@ export function shareFileWithUser(fileId: string, userId: string, permission: "v
   });
 }
 
+export function shareFileWithAdmins(fileId: string) {
+  return request<{ sharedCount: number; skippedCount: number }>(`/shares/files/${fileId}/admin`, { method: "POST" });
+}
+
 export function listReceivedShares() {
   return request<ApiFileShare[]>("/shares/received");
 }
@@ -184,7 +229,10 @@ export async function downloadFile(fileId: string, filename: string) {
   const response = await fetch(`${API_URL}/files/${fileId}/download`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined
   });
-  if (!response.ok) throw new Error("Unable to download file");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { message?: string };
+    throw new Error(payload.message || "Unable to download file");
+  }
   const blobUrl = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = blobUrl;
@@ -192,7 +240,7 @@ export async function downloadFile(fileId: string, filename: string) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(blobUrl);
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }
 
 export async function getFilePreviewUrl(fileId: string) {
@@ -200,6 +248,9 @@ export async function getFilePreviewUrl(fileId: string) {
   const response = await fetch(`${API_URL}/files/${fileId}/download`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined
   });
-  if (!response.ok) throw new Error("Unable to preview file");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { message?: string };
+    throw new Error(payload.message || "Unable to preview file");
+  }
   return URL.createObjectURL(await response.blob());
 }
