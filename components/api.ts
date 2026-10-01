@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL.replace(/\/api\/?$/, "");
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL?.replace(/\/api\/?$/, "");
 
 type ApiResponse<T> = { success: boolean; data?: T; message?: string };
 
@@ -21,6 +21,7 @@ export type ApiUser = {
   _id: string;
   name: string;
   email: string;
+  whatsappNumber?: string | null;
   role: "admin" | "user" | "designer";
   isActive: boolean;
   lastSeen: string | null;
@@ -71,7 +72,7 @@ export type ApiTeam = {
 };
 
 export async function login(email: string, password: string) {
-  const response = await fetch(`${API_URL}/auth/login`, {
+  const response = await fetch(`${API_URL}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
@@ -121,18 +122,18 @@ export function uploadFiles(files: File[]) {
   return request<ApiFile[]>("/files/upload", { method: "POST", body: formData });
 }
 
-export function createUser(name: string, email: string, password: string, role: "user" | "admin" | "designer" = "user") {
+export function createUser(name: string, email: string, password: string, role: "user" | "admin" | "designer" = "user", whatsappNumber?: string) {
   return request<ApiUser>("/users", {
     method: "POST",
-    body: JSON.stringify({ name, email, password, role })
+    body: JSON.stringify({ name, email, password, role, whatsappNumber })
   });
 }
 
-export async function signup(name: string, email: string, password: string) {
+export async function signup(name: string, email: string, password: string, whatsappNumber?: string) {
   const response = await fetch(`${API_URL}/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, email, password })
+    body: JSON.stringify({ name, email, password, whatsappNumber })
   });
   const payload = (await response.json().catch(() => ({}))) as { success?: boolean; token?: string; data?: ApiUser; message?: string };
   if (!response.ok || !payload.success || !payload.token || !payload.data) throw new Error(payload.message || "Unable to create account");
