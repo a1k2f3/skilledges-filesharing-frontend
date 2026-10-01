@@ -2,10 +2,10 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { io } from "socket.io-client";
-import { assignOrder as assignOrderRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listOrders, listReceivedShares, SOCKET_URL, updateOrder as updateOrderRequest, type ApiFile, type ApiFileShare, type ApiOrder, type ApiUser } from "./api";
+import { assignOrder as assignOrderRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listNotifications, listOrders, listReceivedShares, markAllNotificationsRead as markAllNotificationsReadRequest, markNotificationRead as markNotificationReadRequest, SOCKET_URL, updateOrder as updateOrderRequest, type ApiFile, type ApiFileShare, type ApiNotification, type ApiOrder, type ApiUser } from "./api";
 
 export type Role = "admin" | "customer" | "designer";
-export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string };
+export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string; whatsappNumber?: string | null };
 export type Order = {
   id: string; customer: string; name: string; format: string; status: string;
   designer: string; designerId?: string; date: string; notes: string; fileUrl: string; fileKey?: string;
@@ -30,15 +30,16 @@ const defaultUsers: Record<string, User> = {
 };
 
 type PortalContextValue = {
-  user: User; users: Record<string, User>; orders: Order[]; files: CompletedFile[]; receivedShares: ApiFileShare[];
+  user: User; users: Record<string, User>; orders: Order[]; files: CompletedFile[]; receivedShares: ApiFileShare[]; notifications: ApiNotification[];
   addOrder: (order: Order) => Promise<void>; updateOrder: (id: string, patch: Partial<Order>) => Promise<void>;
   assignOrder: (id: string, designerId: string) => Promise<void>; removeOrder: (id: string) => Promise<void>; addFile: (file: CompletedFile) => void;
   refreshFiles: () => Promise<void>; refreshReceivedShares: () => Promise<void>;
+  markNotificationRead: (notificationId: string) => Promise<void>; markAllNotificationsRead: () => Promise<void>;
   updatePassword: (password: string) => void; logout: () => void;
 };
 
 function mapUser(user: ApiUser): User {
-  return { id: user._id, username: user.email, email: user.email, password: "", role: user.role === "admin" ? "admin" : user.role === "designer" ? "designer" : "customer", name: user.name };
+  return { id: user._id, username: user.email, email: user.email, whatsappNumber: user.whatsappNumber ?? null, password: "", role: user.role === "admin" ? "admin" : user.role === "designer" ? "designer" : "customer", name: user.name };
 }
 
 function mapFile(file: ApiFile): CompletedFile {
@@ -79,6 +80,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [files, setFiles] = useState<CompletedFile[]>([]);
   const [receivedShares, setReceivedShares] = useState<ApiFileShare[]>([]);
+  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const refreshFiles = useCallback(async () => {
     const nextFiles = (await listFiles()).map(mapFile);
     setFiles(nextFiles);
@@ -106,10 +108,12 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       try {
         const [currentUser, apiFiles, apiOrders] = await Promise.all([getCurrentUser(), listFiles(), listOrders()]);
         const apiShares = await listReceivedShares().catch(() => []);
+        const apiNotifications = await listNotifications().catch(() => []);
         const nextUser = mapUser(currentUser);
         const nextFiles = apiFiles.map(mapFile);
         setOrders(apiOrders.map(mapOrder));
         setReceivedShares(apiShares);
+        setNotifications(apiNotifications);
         setUser(nextUser);
         setFiles(nextFiles);
         localStorage.setItem("skillsEdgeCurrentSession", JSON.stringify(nextUser));
@@ -144,6 +148,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     socket.on("file:shared", refreshWorkspace);
     socket.on("file:share-revoked", refreshWorkspace);
     socket.on("order:updated", () => { void refreshOrders().catch(() => undefined); });
+    socket.on("notification:new", (notification: ApiNotification) => {
+      setNotifications((current) => [notification, ...current.filter((item) => item._id !== notification._id)].slice(0, 100));
+    });
+    socket.on("notification:read", (payload: { notificationId: string; readAt: string }) => {
+      setNotifications((current) => current.map((item) => item._id === payload.notificationId ? { ...item, readAt: payload.readAt } : item));
+    });
+    socket.on("notification:read-all", (payload: { readAt: string }) => {
+      setNotifications((current) => current.map((item) => ({ ...item, readAt: payload.readAt })));
+    });
     socket.connect();
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
@@ -177,6 +190,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     persistFiles(files.filter((file) => !file.order.startsWith(id)));
   };
   const addFile = (file: CompletedFile) => persistFiles([file, ...files]);
+  const markNotificationRead = async (notificationId: string) => {
+    const updated = await markNotificationReadRequest(notificationId);
+    setNotifications((current) => current.map((item) => item._id === updated._id ? updated : item));
+  };
+  const markAllNotificationsRead = async () => {
+    await markAllNotificationsReadRequest();
+    const readAt = new Date().toISOString();
+    setNotifications((current) => current.map((item) => ({ ...item, readAt })));
+  };
   const updatePassword = (password: string) => {
     if (!user) return;
     const nextUsers = { ...users, [user.username]: { ...user, password } };
@@ -187,7 +209,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const logout = () => { setUser(null); localStorage.removeItem("skillsEdgeToken"); localStorage.removeItem("skillsEdgeCurrentSession"); };
 
   if (!ready || !user) return null;
-  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, addOrder, updateOrder, assignOrder, removeOrder, addFile, refreshFiles, refreshReceivedShares, updatePassword, logout }}>{children}</PortalContext.Provider>;
+  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, notifications, addOrder, updateOrder, assignOrder, removeOrder, addFile, refreshFiles, refreshReceivedShares, markNotificationRead, markAllNotificationsRead, updatePassword, logout }}>{children}</PortalContext.Provider>;
 }
 
 export function usePortal() {

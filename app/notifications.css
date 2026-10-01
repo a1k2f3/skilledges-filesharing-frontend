@@ -1,0 +1,147 @@
+.portal-topbar {
+  display: flex;
+  justify-content: flex-end;
+  position: relative;
+  z-index: 30;
+  margin: -18px 0 14px;
+}
+
+.notification-center {
+  position: relative;
+}
+
+.notification-trigger {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  display: flex;
+  gap: 9px;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.notification-count {
+  align-items: center;
+  background: #c94738;
+  border-radius: 10px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  height: 19px;
+  justify-content: center;
+  min-width: 19px;
+  padding: 0 5px;
+}
+
+.notification-popover {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 14px 36px rgba(23, 33, 43, .17);
+  max-height: min(470px, 72vh);
+  overflow: auto;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 9px);
+  width: min(380px, calc(100vw - 36px));
+}
+
+.notification-heading {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  padding: 13px 15px;
+}
+
+.notification-heading strong {
+  font: 600 14px 'Space Grotesk', sans-serif;
+}
+
+.notification-heading button,
+.push-preferences button {
+  background: none;
+  border: 0;
+  color: var(--blue);
+  font-size: 11px;
+  padding: 5px;
+}
+
+.notification-heading button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.push-preferences {
+  align-items: center;
+  background: #f5f7f8;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.push-preferences span {
+  color: var(--muted);
+  flex-basis: 100%;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.notification-popover ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notification-popover li {
+  border-bottom: 1px solid var(--line);
+}
+
+.notification-popover li.unread {
+  background: #f1f6ff;
+}
+
+.notification-item {
+  background: transparent;
+  border: 0;
+  display: grid;
+  gap: 5px;
+  padding: 12px 15px;
+  text-align: left;
+  width: 100%;
+}
+
+.notification-item strong {
+  font-size: 12px;
+}
+
+.notification-item span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.notification-item time {
+  color: #84909a;
+  font-size: 10px;
+}
+
+.notification-empty {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+  padding: 18px 15px;
+}
+
+@media (max-width: 850px) {
+  .portal-topbar {
+    margin: -22px 0 22px;
+  }
+}

@@ -1,7 +1,8 @@
 import JSZip from "jszip";
 
-const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL?.replace(/\/api\/?$/, "");
+const rawApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = `${rawApiUrl.replace(/\/+$/, "").replace(/\/api\/?$/, "")}/api`;
+export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || rawApiUrl.replace(/\/api\/?$/, "");
 
 type ApiResponse<T> = { success: boolean; data?: T; message?: string };
 
@@ -60,6 +61,22 @@ export type ApiFileShare = {
   createdAt: string;
 };
 
+export type ApiNotification = {
+  _id: string;
+  type: string;
+  title: string;
+  message: string;
+  data: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type BrowserPushSubscription = {
+  endpoint: string;
+  expirationTime: number | null;
+  keys: { p256dh: string; auth: string };
+};
+
 export type ApiTeamUser = Pick<ApiUser, "_id" | "name" | "email" | "role">;
 
 export type ApiTeam = {
@@ -72,7 +89,7 @@ export type ApiTeam = {
 };
 
 export async function login(email: string, password: string) {
-  const response = await fetch(`${API_URL}/api/auth/login`, {
+  const response = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
@@ -217,6 +234,30 @@ export function shareFileWithAdmins(fileId: string) {
 
 export function listReceivedShares() {
   return request<ApiFileShare[]>("/shares/received");
+}
+
+export function listNotifications() {
+  return request<ApiNotification[]>("/notifications");
+}
+
+export function markNotificationRead(notificationId: string) {
+  return request<ApiNotification>(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "PATCH" });
+}
+
+export function markAllNotificationsRead() {
+  return request<{ modifiedCount: number }>("/notifications/read-all", { method: "PATCH" });
+}
+
+export function getPushPublicKey() {
+  return request<{ publicKey: string }>("/notifications/push-public-key");
+}
+
+export function savePushSubscription(subscription: BrowserPushSubscription) {
+  return request<{ id: string }>("/notifications/push-subscriptions", { method: "POST", body: JSON.stringify(subscription) });
+}
+
+export function removePushSubscription(endpoint: string) {
+  return request<{ message: string }>("/notifications/push-subscriptions", { method: "DELETE", body: JSON.stringify({ endpoint }) });
 }
 
 export function listSentShares() {

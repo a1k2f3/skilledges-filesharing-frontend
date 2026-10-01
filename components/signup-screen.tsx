@@ -9,6 +9,7 @@ export function SignupScreen() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -21,7 +22,7 @@ export function SignupScreen() {
 
     setSubmitting(true);
     try {
-      const result = await apiSignup(name.trim(), email.trim(), password);
+      const result = await apiSignup(name.trim(), email.trim(), password, whatsappNumber.trim());
       localStorage.setItem("skillsEdgeToken", result.token);
       localStorage.setItem("skillsEdgeCurrentSession", JSON.stringify(result.data));
       router.push("/dashboard");
@@ -40,6 +41,7 @@ export function SignupScreen() {
     <form onSubmit={submit}>
       <label>Full name<input required minLength={2} maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" /></label>
       <label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label>
+      <label>WhatsApp number<input type="tel" value={whatsappNumber} onChange={(event) => setWhatsappNumber(event.target.value)} placeholder="+1 234 567 8900" /></label>
       <label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>
       <label>Confirm password<input required minLength={6} type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat your password" /></label>
       {error && <p className="form-error">{error}</p>}
