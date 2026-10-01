@@ -36,7 +36,7 @@ function FileDownload({ fileKey, legacyUrl, name }: { fileKey?: string; legacyUr
 }
 
 function ReceivedFileRow({ share, selected, onToggle }: { share: ApiFileShare; selected?: boolean; onToggle?: (shareId: string) => void }) {
-	return <div className="file-row">{onToggle && <input type="checkbox" aria-label={`Select ${share.file.originalName}`} checked={Boolean(selected)} onChange={() => onToggle(share._id)} />}<div className="file-meta"><strong>{share.file.originalName}</strong><span>From {share.sharedBy?.name || "Unknown sender"} · {new Date(share.createdAt).toLocaleString()}</span></div><FileDownload fileKey={share.file._id} name={share.file.originalName} /></div>;
+	return <div className="file-row">{onToggle && <input type="checkbox" aria-label={`Select ${share.file.originalName}`} checked={Boolean(selected)} onChange={() => onToggle(share._id)} />}<div className="file-meta"><strong>{share.file.originalName}</strong><span>From {share.sharedBy?.name || "Unknown sender"} · {share.file.widthInches && share.file.heightInches ? `${share.file.widthInches} × ${share.file.heightInches} in${share.file.resolutionDpi ? ` @ ${share.file.resolutionDpi} DPI` : ""} · ` : ""}{new Date(share.createdAt).toLocaleString()}</span></div><FileDownload fileKey={share.file._id} name={share.file.originalName} /></div>;
 }
 
 export default function FilesPage() {

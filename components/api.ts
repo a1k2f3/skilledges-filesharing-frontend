@@ -36,6 +36,9 @@ export type ApiFile = {
   format: string | null;
   mimeType: string;
   size: number;
+  widthInches?: number;
+  heightInches?: number;
+  resolutionDpi?: number;
   createdAt: string;
 };
 
@@ -46,16 +49,18 @@ export type ApiOrder = {
   designName: string;
   format: string;
   status: string;
+  priority: "Low" | "Normal" | "High" | "Urgent";
   assignedDesigner?: Pick<ApiUser, "_id" | "name" | "email"> | null;
   createdAt: string;
   notes: string;
+  productionNotes?: string;
   sourceFiles: { file: { _id: string; originalName: string } | string; name?: string }[];
   sentToCustomer: string;
 };
 
 export type ApiFileShare = {
   _id: string;
-  file: Pick<ApiFile, "_id" | "originalName" | "secureUrl" | "size" | "mimeType" | "format">;
+  file: Pick<ApiFile, "_id" | "originalName" | "secureUrl" | "size" | "mimeType" | "format" | "widthInches" | "heightInches" | "resolutionDpi">;
   sharedBy?: Pick<ApiUser, "_id" | "name" | "email">;
   sharedWith?: Pick<ApiUser, "_id" | "name" | "email" | "role">;
   createdAt: string;
@@ -111,7 +116,7 @@ export function listOrders() {
   return request<ApiOrder[]>("/orders");
 }
 
-export function createOrder(order: { orderNumber: string; customerName: string; designName: string; format: string; notes: string; sourceFiles: { fileKey: string; name: string }[] }) {
+export function createOrder(order: { orderNumber: string; customerName: string; designName: string; format: string; priority: string; productionNotes: string; sourceFiles: { fileKey: string; name: string }[] }) {
   return request<ApiOrder>("/orders", { method: "POST", body: JSON.stringify(order) });
 }
 
@@ -203,6 +208,13 @@ export function deactivateDesigner(designerId: string) {
   return request<{ _id: string; isActive: boolean }>(`/users/designers/${designerId}`, { method: "DELETE" });
 }
 
+export function setDesignerActive(designerId: string, isActive: boolean) {
+  return request<{ _id: string; isActive: boolean }>(`/users/designers/${designerId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive })
+  });
+}
+
 export function addTeamMember(teamId: string, userId: string) {
   return request<ApiTeam>(`/teams/${teamId}/members`, {
     method: "POST",
@@ -264,8 +276,8 @@ export function listSentShares() {
   return request<ApiFileShare[]>("/shares/sent");
 }
 
-export function listDesigners() {
-  return request<ApiUser[]>("/users/designers");
+export function listDesigners(includeInactive = false) {
+  return request<ApiUser[]>(`/users/designers${includeInactive ? "?includeInactive=true" : ""}`);
 }
 
 export async function downloadFile(fileId: string, filename: string) {

@@ -8,11 +8,12 @@ export type Role = "admin" | "customer" | "designer";
 export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string; whatsappNumber?: string | null };
 export type Order = {
   id: string; customer: string; name: string; format: string; status: string;
-  designer: string; designerId?: string; date: string; notes: string; fileUrl: string; fileKey?: string;
+  priority: "Low" | "Normal" | "High" | "Urgent"; designer: string; designerId?: string; date: string; notes: string; productionNotes?: string; fileUrl: string; fileKey?: string;
   downloadName: string; sourceFiles?: { fileKey: string; name: string }[]; sentToCustomer: string;
 };
 export type CompletedFile = {
   name: string; fileUrl: string; fileKey?: string; format: string; order: string;
+  widthInches?: number; heightInches?: number; resolutionDpi?: number;
   customer: string; designer: string; date: string; ownerId?: string; ownerName?: string; ownerRole?: string;
 };
 
@@ -43,7 +44,8 @@ function mapUser(user: ApiUser): User {
 }
 
 function mapFile(file: ApiFile): CompletedFile {
-  return { name: file.originalName, fileUrl: file.secureUrl, fileKey: file._id, format: file.format || file.mimeType, order: "", customer: "", designer: "", date: file.createdAt, ownerId: file.owner?._id, ownerName: file.owner?.name, ownerRole: file.owner?.role };
+  const dimensions = file.widthInches && file.heightInches ? ` · ${file.widthInches} × ${file.heightInches} in${file.resolutionDpi ? ` @ ${file.resolutionDpi} DPI` : ""}` : "";
+  return { name: file.originalName, fileUrl: file.secureUrl, fileKey: file._id, format: `${file.format || file.mimeType}${dimensions}`, order: "", widthInches: file.widthInches, heightInches: file.heightInches, resolutionDpi: file.resolutionDpi, customer: "", designer: "", date: file.createdAt, ownerId: file.owner?._id, ownerName: file.owner?.name, ownerRole: file.owner?.role };
 }
 
 function mapOrder(order: ApiOrder): Order {
@@ -59,10 +61,12 @@ function mapOrder(order: ApiOrder): Order {
     name: order.designName,
     format: order.format,
     status: order.status,
+    priority: order.priority || "Normal",
     designer: order.assignedDesigner?.name || "",
     designerId: order.assignedDesigner?._id,
     date: new Date(order.createdAt).toLocaleString(),
-    notes: order.notes || "",
+    notes: [`Priority: ${order.priority || "Normal"}`, order.productionNotes || order.notes || ""].filter(Boolean).join(" · "),
+    productionNotes: order.productionNotes || order.notes || "",
     fileUrl: "",
     fileKey: sourceFiles[0]?.fileKey,
     downloadName: sourceFiles[0]?.name || "",
@@ -171,7 +175,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       customerName: order.customer,
       designName: order.name,
       format: order.format,
-      notes: order.notes,
+      priority: order.priority,
+      productionNotes: order.productionNotes || order.notes,
       sourceFiles: order.sourceFiles || []
     });
     setOrders((current) => [mapOrder(created), ...current.filter((item) => item.id !== created.orderNumber)]);
