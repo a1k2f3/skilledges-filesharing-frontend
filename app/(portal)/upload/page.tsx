@@ -16,9 +16,12 @@ export default function UploadPage() {
   const [notes, setNotes] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function submit() {
+    if (submitting) return;
     if (!name.trim()) { setError("Add a design name before sending the order."); return; }
+    setSubmitting(true);
     try {
       const uploadedFiles = files.length ? await uploadFiles(files) : [];
       if (user.role !== "admin") await Promise.all(uploadedFiles.map((file) => shareFileWithAdmins(file._id)));
@@ -45,6 +48,8 @@ export default function UploadPage() {
       router.push("/orders");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Unable to upload files.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -65,7 +70,7 @@ export default function UploadPage() {
         </div>
       </div>
       {error && <p className="form-error">{error}</p>}
-      <div className="form-footer"><span className="muted">Orders are visible to the assigned production team.</span><button className="button button-primary" onClick={submit}>Send order <span>→</span></button></div>
+      <div className="form-footer"><span className="muted">Orders are visible to the assigned production team.</span><button className="button button-primary" disabled={submitting} onClick={() => void submit()}>{submitting ? <><span className="loading-spinner" aria-hidden="true" />Sending order...</> : <>Send order <span>→</span></>}</button></div>
     </section>
   </>;
 }

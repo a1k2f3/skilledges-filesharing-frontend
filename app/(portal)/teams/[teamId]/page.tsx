@@ -4,7 +4,7 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { getTeam, listFiles, shareFileWithTeam, type ApiFile, type ApiTeam } from "@/components/api";
 import { usePortal } from "@/components/portal-context";
-import { PageHeader } from "@/components/portal-ui";
+import { LoadingIndicator, PageHeader } from "@/components/portal-ui";
 
 export default function TeamDetailPage({ params }: { params: Promise<{ teamId: string }> }) {
   const { user } = usePortal();
@@ -42,7 +42,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
   }
 
   if (user.role !== "admin") return <PageHeader eyebrow="Workspace access" title="Team details" description="Only administrators can view team details." />;
-  if (loading) return <><PageHeader eyebrow="Workspace structure" title="Team details" /><p className="muted">Loading team...</p></>;
+  if (loading) return <><PageHeader eyebrow="Workspace structure" title="Team details" /><LoadingIndicator label="Loading team..." /></>;
   if (!team) return <><PageHeader eyebrow="Workspace structure" title="Team not found" description={message || "This team is no longer available."} /><Link className="button button-secondary" href="/teams">Back to teams</Link></>;
 
   return <>

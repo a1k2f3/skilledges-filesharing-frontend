@@ -9,6 +9,10 @@ export function PageHeader({ eyebrow, title, description, action }: { eyebrow: s
   return <div className="page-header"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{description && <p className="page-description">{description}</p>}</div>{action}</div>;
 }
 
+export function LoadingIndicator({ label }: { label: string }) {
+  return <div className="loading-indicator" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true" />{label}</div>;
+}
+
 export function StatusBadge({ status }: { status: string }) { return <span className={`status status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>; }
 
 export function OrderTable({ orders, compact = false }: { orders: Order[]; compact?: boolean }) {

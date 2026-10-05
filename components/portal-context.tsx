@@ -215,7 +215,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   };
   const logout = () => { setUser(null); localStorage.removeItem("skillsEdgeToken"); localStorage.removeItem("skillsEdgeCurrentSession"); };
 
-  if (!ready || !user) return null;
+  if (!ready || !user) return <main className="workspace-loading" role="status" aria-live="polite">
+    <strong className="workspace-loading-mark">SKILLS <span>EDGE</span></strong>
+    <p>Loading your workspace...</p>
+    <span className="workspace-loading-track" aria-hidden="true"><span /></span>
+  </main>;
   return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, notifications, addOrder, updateOrder, assignOrder, removeOrder, addFile, refreshFiles, refreshReceivedShares, markNotificationRead, markAllNotificationsRead, updatePassword, logout }}>{children}</PortalContext.Provider>;
 }
 
