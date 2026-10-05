@@ -23,7 +23,6 @@ export default function TeamsPage() {
   const [loading, setLoading] = useState(true);
 
   async function loadTeams() {
-    setLoading(true);
     try {
       const [nextTeams, nextUsers] = await Promise.all([listTeams(), listUsers()]);
       setTeams(nextTeams);
@@ -44,6 +43,7 @@ export default function TeamsPage() {
     if (!window.confirm(`Delete ${team.name}?`)) return;
     try {
       await deleteTeam(team._id);
+      setLoading(true);
       await loadTeams();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to delete team.");
