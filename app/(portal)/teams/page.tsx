@@ -36,7 +36,7 @@ export default function TeamsPage() {
   }
 
   useEffect(() => {
-    if (user.role === "admin") void loadTeams();
+    if (user.role === "admin") void Promise.resolve().then(loadTeams);
   }, [user.role]);
 
   async function removeTeam(team: ApiTeam) {
