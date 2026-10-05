@@ -111,8 +111,10 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       if (!token || !saved) { window.location.href = "/"; return; }
       try {
         const [currentUser, apiFiles, apiOrders] = await Promise.all([getCurrentUser(), listFiles(), listOrders()]);
-        const apiShares = await listReceivedShares().catch(() => []);
-        const apiNotifications = await listNotifications().catch(() => []);
+        const [apiShares, apiNotifications] = await Promise.all([
+          listReceivedShares().catch(() => []),
+          listNotifications().catch(() => [])
+        ]);
         const nextUser = mapUser(currentUser);
         const nextFiles = apiFiles.map(mapFile);
         setOrders(apiOrders.map(mapOrder));

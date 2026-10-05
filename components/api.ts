@@ -1,5 +1,3 @@
-import JSZip from "jszip";
-
 const rawApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const API_URL = `${rawApiUrl.replace(/\/+$/, "").replace(/\/api\/?$/, "")}/api`;
 export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || rawApiUrl.replace(/\/api\/?$/, "");
@@ -301,6 +299,7 @@ export async function downloadFile(fileId: string, filename: string) {
 
 export async function downloadFilesAsZip(files: { fileId: string; filename: string }[], archiveName: string) {
   const token = typeof window === "undefined" ? null : localStorage.getItem("skillsEdgeToken");
+  const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   const filenameCounts = new Map<string, number>();
   await Promise.all(files.map(async (file) => {
