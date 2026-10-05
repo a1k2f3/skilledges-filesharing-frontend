@@ -2,14 +2,14 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { io } from "socket.io-client";
-import { assignOrder as assignOrderRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listNotifications, listOrders, listReceivedShares, markAllNotificationsRead as markAllNotificationsReadRequest, markNotificationRead as markNotificationReadRequest, SOCKET_URL, updateOrder as updateOrderRequest, type ApiFile, type ApiFileShare, type ApiNotification, type ApiOrder, type ApiUser } from "./api";
+import { assignOrder as assignOrderRequest, attachOrderDeliverables as attachOrderDeliverablesRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listNotifications, listOrders, listReceivedShares, markAllNotificationsRead as markAllNotificationsReadRequest, markNotificationRead as markNotificationReadRequest, SOCKET_URL, updateOrder as updateOrderRequest, type ApiFile, type ApiFileShare, type ApiNotification, type ApiOrder, type ApiUser } from "./api";
 
 export type Role = "admin" | "customer" | "designer";
 export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string; whatsappNumber?: string | null };
 export type Order = {
   id: string; customer: string; name: string; format: string; status: string;
   priority: "Low" | "Normal" | "High" | "Urgent"; designer: string; designerId?: string; date: string; notes: string; productionNotes?: string; fileUrl: string; fileKey?: string;
-  downloadName: string; sourceFiles?: { fileKey: string; name: string }[]; sentToCustomer: string;
+  downloadName: string; sourceFiles?: { fileKey: string; name: string; deliverables?: { fileKey: string; name: string }[] }[]; sentToCustomer: string;
 };
 export type CompletedFile = {
   name: string; fileUrl: string; fileKey?: string; format: string; order: string;
@@ -33,7 +33,7 @@ const defaultUsers: Record<string, User> = {
 type PortalContextValue = {
   user: User; users: Record<string, User>; orders: Order[]; files: CompletedFile[]; receivedShares: ApiFileShare[]; notifications: ApiNotification[];
   addOrder: (order: Order) => Promise<void>; updateOrder: (id: string, patch: Partial<Order>) => Promise<void>;
-  assignOrder: (id: string, designerId: string) => Promise<void>; removeOrder: (id: string) => Promise<void>; addFile: (file: CompletedFile) => void;
+  assignOrder: (id: string, designerId: string) => Promise<void>; attachOrderDeliverables: (id: string, sourceFileId: string, files: { fileKey: string; name: string }[]) => Promise<void>; removeOrder: (id: string) => Promise<void>; addFile: (file: CompletedFile) => void;
   refreshFiles: () => Promise<void>; refreshReceivedShares: () => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>; markAllNotificationsRead: () => Promise<void>;
   updatePassword: (password: string) => void; logout: () => void;
@@ -53,7 +53,13 @@ function mapOrder(order: ApiOrder): Order {
     if (!item.file) return [];
     const fileKey = typeof item.file === "string" ? item.file : item.file._id;
     const fileName = typeof item.file === "string" ? "File" : item.file.originalName;
-    return [{ fileKey, name: item.name || fileName }];
+    const deliverables = (item.deliverables || []).flatMap((deliverable) => {
+      if (!deliverable.file) return [];
+      const deliverableKey = typeof deliverable.file === "string" ? deliverable.file : deliverable.file._id;
+      const deliverableName = typeof deliverable.file === "string" ? "File" : deliverable.file.originalName;
+      return [{ fileKey: deliverableKey, name: deliverable.name || deliverableName }];
+    });
+    return [{ fileKey, name: item.name || fileName, deliverables }];
   });
   return {
     id: order.orderNumber,
@@ -191,6 +197,10 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     const updated = await assignOrderRequest(id, designerId);
     setOrders((current) => current.map((order) => order.id === id ? mapOrder(updated) : order));
   };
+  const attachOrderDeliverables = async (id: string, sourceFileId: string, files: { fileKey: string; name: string }[]) => {
+    const updated = await attachOrderDeliverablesRequest(id, sourceFileId, files);
+    setOrders((current) => current.map((order) => order.id === id ? mapOrder(updated) : order));
+  };
   const removeOrder = async (id: string) => {
     await deleteOrderRequest(id);
     setOrders((current) => current.filter((order) => order.id !== id));
@@ -220,7 +230,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     <p>Loading your workspace...</p>
     <span className="workspace-loading-track" aria-hidden="true"><span /></span>
   </main>;
-  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, notifications, addOrder, updateOrder, assignOrder, removeOrder, addFile, refreshFiles, refreshReceivedShares, markNotificationRead, markAllNotificationsRead, updatePassword, logout }}>{children}</PortalContext.Provider>;
+  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, notifications, addOrder, updateOrder, assignOrder, attachOrderDeliverables, removeOrder, addFile, refreshFiles, refreshReceivedShares, markNotificationRead, markAllNotificationsRead, updatePassword, logout }}>{children}</PortalContext.Provider>;
 }
 
 export function usePortal() {

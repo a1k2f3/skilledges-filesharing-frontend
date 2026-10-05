@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "./designer-deliverables.css";
 import "./globals.css";
 import "./loading.css";
 import "./notifications.css";
