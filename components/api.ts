@@ -52,7 +52,11 @@ export type ApiOrder = {
   createdAt: string;
   notes: string;
   productionNotes?: string;
-  sourceFiles: { file: { _id: string; originalName: string } | string; name?: string }[];
+  sourceFiles: {
+    file: { _id: string; originalName: string } | string;
+    name?: string;
+    deliverables?: { file: { _id: string; originalName: string } | string; name?: string }[];
+  }[];
   sentToCustomer: string;
 };
 
@@ -338,4 +342,11 @@ export async function getFilePreviewUrl(fileId: string) {
     throw new Error(payload.message || "Unable to preview file");
   }
   return URL.createObjectURL(await response.blob());
+}
+
+export function attachOrderDeliverables(orderNumber: string, sourceFileId: string, deliverableFiles: { fileKey: string; name: string }[]) {
+  return request<ApiOrder>(`/orders/${encodeURIComponent(orderNumber)}/source-files/${encodeURIComponent(sourceFileId)}/deliverables`, {
+    method: "POST",
+    body: JSON.stringify({ deliverableFiles })
+  });
 }

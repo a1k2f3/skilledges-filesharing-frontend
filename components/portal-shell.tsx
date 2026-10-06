@@ -23,17 +23,21 @@ function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushStatus, setPushStatus] = useState("");
+  const [pushBusy, setPushBusy] = useState(false);
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
     void navigator.serviceWorker.getRegistration().then(async (registration) => {
       const subscription = await registration?.pushManager.getSubscription();
-      if (subscription) setPushEnabled(true);
-    });
+      setPushEnabled(Boolean(subscription));
+    }).catch(() => setPushStatus("Unable to check device notification settings."));
   }, []);
 
   async function togglePushNotifications() {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushStatus("");
     try {
       if (pushEnabled) {
         const registration = await navigator.serviceWorker.getRegistration();
@@ -47,16 +51,17 @@ function NotificationCenter() {
         return;
       }
       if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-        setPushStatus("Device alerts are not supported by this browser.");
+        setPushStatus("This browser does not support device alerts. Use a supported browser over HTTPS.");
         return;
       }
+      const { publicKey } = await getPushPublicKey();
       const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
       if (permission !== "granted") {
         setPushStatus("Allow notifications in your browser settings to receive device alerts.");
         return;
       }
-      const { publicKey } = await getPushPublicKey();
       const registration = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: decodeVapidKey(publicKey) as BufferSource
@@ -68,6 +73,8 @@ function NotificationCenter() {
       setPushStatus("Device alerts are enabled on this browser.");
     } catch (error) {
       setPushStatus(error instanceof Error ? error.message : "Unable to enable device alerts.");
+    } finally {
+      setPushBusy(false);
     }
   }
 
@@ -78,7 +85,7 @@ function NotificationCenter() {
     </button>
     {open && <section className="notification-popover" aria-label="Notifications">
       <div className="notification-heading"><strong>Notifications</strong><button type="button" onClick={() => void markAllNotificationsRead().catch(() => undefined)} disabled={!unreadCount}>Mark all read</button></div>
-      <div className="push-preferences"><button type="button" onClick={() => void togglePushNotifications()}>{pushEnabled ? "Turn off device alerts" : "Enable device alerts"}</button>{pushStatus && <span role="status">{pushStatus}</span>}</div>
+      <div className="push-preferences"><button type="button" aria-pressed={pushEnabled} disabled={pushBusy} onClick={() => void togglePushNotifications()}>{pushBusy ? (pushEnabled ? "Turning off alerts..." : "Enabling alerts...") : pushEnabled ? "Turn off device alerts" : "Enable device alerts"}</button>{pushStatus && <span role="status">{pushStatus}</span>}</div>
       {notifications.length === 0 ? <p className="notification-empty">No notifications yet.</p> : <ul>
         {notifications.map((notification) => <li key={notification._id} className={notification.readAt ? "" : "unread"}>
           <button type="button" className="notification-item" onClick={() => { if (!notification.readAt) void markNotificationRead(notification._id).catch(() => undefined); }}>
