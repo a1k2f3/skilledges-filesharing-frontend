@@ -29,7 +29,7 @@ export type ApiUser = {
 
 export type ApiFile = {
   _id: string;
-  owner?: Pick<ApiUser, "_id" | "name" | "email" | "role">;
+  owner?: Pick<ApiUser, "_id" | "name" | "username" | "email" | "role">;
   originalName: string;
   secureUrl: string;
   format: string | null;
@@ -47,6 +47,7 @@ export type ApiOrder = {
   customerName: string;
   designName: string;
   format: string;
+  software?: "Wilcom" | "WingsXP";
   status: string;
   priority: "Low" | "Normal" | "High" | "Urgent";
   assignedDesigner?: Pick<ApiUser, "_id" | "name" | "email"> | null;
@@ -136,7 +137,7 @@ export function getDesignerDeliveryReport(start: string, end: string) {
   return request<DesignerDeliveryReport>(`/orders/reports/designer-deliveries?${params}`);
 }
 
-export function createOrder(order: { orderNumber: string; customerName: string; designName: string; format: string; priority: string; productionNotes: string; sourceFiles: { fileKey: string; name: string }[] }) {
+export function createOrder(order: { orderNumber: string; customerName: string; designName: string; format: string; software?: "Wilcom" | "WingsXP"; priority: string; productionNotes: string; sourceFiles: { fileKey: string; name: string }[] }) {
   return request<ApiOrder>("/orders", { method: "POST", body: JSON.stringify(order) });
 }
 
@@ -168,6 +169,13 @@ export function createUser(name: string, email: string, password: string, role: 
   return request<ApiUser>("/users", {
     method: "POST",
     body: JSON.stringify({ name, email, password, role, whatsappNumber })
+  });
+}
+
+export function createCustomer(username: string, password: string) {
+  return request<ApiUser>("/users", {
+    method: "POST",
+    body: JSON.stringify({ username, password, role: "user" })
   });
 }
 

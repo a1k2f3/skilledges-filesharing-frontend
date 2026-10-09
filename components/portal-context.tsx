@@ -7,7 +7,7 @@ import { assignOrder as assignOrderRequest, attachOrderDeliverables as attachOrd
 export type Role = "admin" | "customer" | "designer";
 export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string; whatsappNumber?: string | null };
 export type Order = {
-  id: string; customer: string; name: string; format: string; status: string;
+  id: string; customer: string; name: string; format: string; software?: "Wilcom" | "WingsXP"; status: string;
   priority: "Low" | "Normal" | "High" | "Urgent"; designer: string; designerId?: string; date: string; notes: string; productionNotes?: string; fileUrl: string; fileKey?: string;
   downloadName: string; sourceFiles?: { fileKey: string; name: string; deliverables?: { fileKey: string; name: string }[] }[]; sentToCustomer: string;
 };
@@ -67,6 +67,7 @@ function mapOrder(order: ApiOrder): Order {
     customer: order.customerName,
     name: order.designName,
     format: order.format,
+    software: order.software,
     status: order.status,
     priority: order.priority || "Normal",
     designer: order.assignedDesigner?.name || "",
@@ -184,6 +185,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       customerName: order.customer,
       designName: order.name,
       format: order.format,
+      software: order.software,
       priority: order.priority,
       productionNotes: order.productionNotes || order.notes,
       sourceFiles: order.sourceFiles || []
