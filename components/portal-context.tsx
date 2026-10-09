@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { io } from "socket.io-client";
-import { assignOrder as assignOrderRequest, attachOrderDeliverables as attachOrderDeliverablesRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listNotifications, listOrders, listReceivedShares, markAllNotificationsRead as markAllNotificationsReadRequest, markNotificationRead as markNotificationReadRequest, SOCKET_URL, updateOrder as updateOrderRequest, type ApiFile, type ApiFileShare, type ApiNotification, type ApiOrder, type ApiUser } from "./api";
+import { assignOrder as assignOrderRequest, attachOrderDeliverables as attachOrderDeliverablesRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listNotifications, listOrders, listReceivedShares, markAllNotificationsRead as markAllNotificationsReadRequest, markNotificationRead as markNotificationReadRequest, SOCKET_URL, updateOrder as updateOrderRequest, updateUser as updateUserRequest, type ApiFile, type ApiFileShare, type ApiNotification, type ApiOrder, type ApiUser } from "./api";
 
 export type Role = "admin" | "customer" | "designer";
 export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string; whatsappNumber?: string | null };
@@ -36,6 +36,7 @@ type PortalContextValue = {
   assignOrder: (id: string, designerId: string) => Promise<void>; attachOrderDeliverables: (id: string, sourceFileId: string, files: { fileKey: string; name: string }[]) => Promise<void>; removeOrder: (id: string) => Promise<void>; addFile: (file: CompletedFile) => void;
   refreshFiles: () => Promise<void>; refreshReceivedShares: () => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>; markAllNotificationsRead: () => Promise<void>;
+  updateProfile: (updates: { name: string; email: string | null; whatsappNumber: string | null }) => Promise<void>;
   updatePassword: (password: string) => void; logout: () => void;
 };
 
@@ -216,6 +217,12 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     const readAt = new Date().toISOString();
     setNotifications((current) => current.map((item) => ({ ...item, readAt })));
   };
+  const updateProfile = async (updates: { name: string; email: string | null; whatsappNumber: string | null }) => {
+    if (!user?.id) throw new Error("Unable to identify the current user.");
+    const updatedUser = mapUser(await updateUserRequest(user.id, updates));
+    setUser(updatedUser);
+    localStorage.setItem("skillsEdgeCurrentSession", JSON.stringify(updatedUser));
+  };
   const updatePassword = (password: string) => {
     if (!user) return;
     const nextUsers = { ...users, [user.username]: { ...user, password } };
@@ -230,7 +237,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     <p>Loading your workspace...</p>
     <span className="workspace-loading-track" aria-hidden="true"><span /></span>
   </main>;
-  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, notifications, addOrder, updateOrder, assignOrder, attachOrderDeliverables, removeOrder, addFile, refreshFiles, refreshReceivedShares, markNotificationRead, markAllNotificationsRead, updatePassword, logout }}>{children}</PortalContext.Provider>;
+  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, notifications, addOrder, updateOrder, assignOrder, attachOrderDeliverables, removeOrder, addFile, refreshFiles, refreshReceivedShares, markNotificationRead, markAllNotificationsRead, updateProfile, updatePassword, logout }}>{children}</PortalContext.Provider>;
 }
 
 export function usePortal() {

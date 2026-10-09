@@ -116,6 +116,13 @@ export function getCurrentUser() {
   return request<ApiUser>("/users/me");
 }
 
+export function updateUser(userId: string, updates: { name: string; email: string | null; whatsappNumber: string | null }) {
+  return request<ApiUser>(`/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates)
+  });
+}
+
 export function listFiles() {
   return request<ApiFile[]>("/files");
 }
@@ -224,8 +231,8 @@ export function bulkDeleteFiles(options: { fileIds?: string[]; deleteAll?: boole
   });
 }
 
-export function deactivateDesigner(designerId: string) {
-  return request<{ _id: string; isActive: boolean }>(`/users/designers/${designerId}`, { method: "DELETE" });
+export function deleteDesigner(designerId: string) {
+  return request<{ _id: string }>(`/users/designers/${designerId}`, { method: "DELETE" });
 }
 
 export function setDesignerActive(designerId: string, isActive: boolean) {
