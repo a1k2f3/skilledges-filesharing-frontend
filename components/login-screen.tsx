@@ -23,7 +23,7 @@ export function LoginScreen() {
       localStorage.setItem("skillsEdgeCurrentSession", JSON.stringify(result.data));
       router.push("/dashboard");
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Invalid email or password");
+      setError(loginError instanceof Error ? loginError.message : "Invalid username or email, or password");
     }
   }
 
@@ -31,7 +31,7 @@ export function LoginScreen() {
     <div className="brand brand-dark">SKILLS <span>EDGE</span></div>
     <p className="eyebrow">Embroidery operations portal</p>
     <h1>Welcome back</h1><p className="login-copy">Sign in to manage digitizing orders and production files.</p>
-    <label>Email<input type="email" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="you@example.com" /></label>
+    <label>Email or username<input type="text" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="you@example.com or username" /></label>
     <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && login()} placeholder="Enter your password" /></label>
     {error && <p className="form-error">{error}</p>}
     <button className="button button-primary full-width" onClick={login}>Sign in <span aria-hidden="true">→</span></button>

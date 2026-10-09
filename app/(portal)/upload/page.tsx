@@ -11,7 +11,7 @@ export default function UploadPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState(user.role === "customer" ? user.name : "Wilcom");
   const [name, setName] = useState("");
-  const [format, setFormat] = useState("DST");
+  const format = "DST";
   const [priority, setPriority] = useState<Order["priority"]>("Normal");
   const [notes, setNotes] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -60,8 +60,7 @@ export default function UploadPage() {
         <div>
           {user.role === "admin" && <label>Software<select value={customer} onChange={(event) => setCustomer(event.target.value)}><option>Wilcom</option><option>WingsXP</option></select></label>}
           <label>Design name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Back logo - 10 inch" /></label>
-          <label>Required format<select value={format} onChange={(event) => setFormat(event.target.value)}><option>DST</option><option>EMB</option><option>NGS</option><option>EXP</option><option>PES</option><option>JEF</option><option>VP3</option><option>HUS</option><option>JPG + DST + EMB</option></select></label>
-          <label>Priority<select value={priority} onChange={(event) => setPriority(event.target.value as Order["priority"])}><option>Low</option><option>Normal</option><option>High</option><option>Urgent</option></select></label>
+          <label>Priority<select value={priority} onChange={(event) => setPriority(event.target.value as Order["priority"])}><option>Normal</option><option>Urgent</option></select></label>
         </div>
         <div>
           <label>Source artwork</label>

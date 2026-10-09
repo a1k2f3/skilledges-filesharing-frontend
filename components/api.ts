@@ -19,7 +19,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export type ApiUser = {
   _id: string;
   name: string;
-  email: string;
+  username?: string;
+  email?: string;
   whatsappNumber?: string | null;
   role: "admin" | "user" | "designer";
   isActive: boolean;
@@ -60,6 +61,11 @@ export type ApiOrder = {
   sentToCustomer: string;
 };
 
+export type DesignerDeliveryReport = {
+  total: number;
+  designers: { designerId: string; designerName: string; logoCount: number }[];
+};
+
 export type ApiFileShare = {
   _id: string;
   file: Pick<ApiFile, "_id" | "originalName" | "secureUrl" | "size" | "mimeType" | "format" | "widthInches" | "heightInches" | "resolutionDpi">;
@@ -84,7 +90,7 @@ export type BrowserPushSubscription = {
   keys: { p256dh: string; auth: string };
 };
 
-export type ApiTeamUser = Pick<ApiUser, "_id" | "name" | "email" | "role">;
+export type ApiTeamUser = Pick<ApiUser, "_id" | "name" | "username" | "email" | "role">;
 
 export type ApiTeam = {
   _id: string;
@@ -95,14 +101,14 @@ export type ApiTeam = {
   updatedAt: string;
 };
 
-export async function login(email: string, password: string) {
+export async function login(identifier: string, password: string) {
   const response = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ identifier, password })
   });
   const payload = (await response.json().catch(() => ({}))) as { success?: boolean; token?: string; data?: ApiUser; message?: string };
-  if (!response.ok || !payload.success || !payload.token || !payload.data) throw new Error(payload.message || "Invalid email or password");
+  if (!response.ok || !payload.success || !payload.token || !payload.data) throw new Error(payload.message || "Invalid username or email, or password");
   return { token: payload.token, data: payload.data };
 }
 
@@ -116,6 +122,11 @@ export function listFiles() {
 
 export function listOrders() {
   return request<ApiOrder[]>("/orders");
+}
+
+export function getDesignerDeliveryReport(start: string, end: string) {
+  const params = new URLSearchParams({ start, end });
+  return request<DesignerDeliveryReport>(`/orders/reports/designer-deliveries?${params}`);
 }
 
 export function createOrder(order: { orderNumber: string; customerName: string; designName: string; format: string; priority: string; productionNotes: string; sourceFiles: { fileKey: string; name: string }[] }) {
@@ -150,6 +161,13 @@ export function createUser(name: string, email: string, password: string, role: 
   return request<ApiUser>("/users", {
     method: "POST",
     body: JSON.stringify({ name, email, password, role, whatsappNumber })
+  });
+}
+
+export function createDesigner(username: string, password: string) {
+  return request<ApiUser>("/users", {
+    method: "POST",
+    body: JSON.stringify({ username, password, role: "designer" })
   });
 }
 
