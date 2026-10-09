@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { bulkDeleteFiles, downloadFile, downloadFilesAsZip, listDesigners, shareFileWithUser, type ApiFileShare, type ApiUser } from "@/components/api";
+import { bulkDeleteFiles, downloadFile, downloadFilesAsZip, listDesigners, listUsers, shareFileWithUser, type ApiFileShare, type ApiUser } from "@/components/api";
 import { getFileUrl } from "@/components/file-store";
 import { FileImagePreview } from "@/components/file-image-preview";
 import { usePortal, type CompletedFile } from "@/components/portal-context";
@@ -42,7 +42,9 @@ function ReceivedFileRow({ share, selected, onToggle }: { share: ApiFileShare; s
 export default function FilesPage() {
 	const { user, files, receivedShares, refreshFiles } = usePortal();
 	const [designers, setDesigners] = useState<ApiUser[]>([]);
+	const [customers, setCustomers] = useState<ApiUser[]>([]);
 	const [selectedDesigners, setSelectedDesigners] = useState<Record<string, string>>({});
+	const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string>>({});
 	const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 	const [selectedReceivedShares, setSelectedReceivedShares] = useState<string[]>([]);
 	const [deleteMessage, setDeleteMessage] = useState("");
@@ -69,7 +71,14 @@ export default function FilesPage() {
 	}, {}));
 
 	useEffect(() => {
-		if (user.role === "admin") void listDesigners().then(setDesigners).catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to load designers."));
+		if (user.role === "admin") {
+			void Promise.all([listDesigners(), listUsers("user")])
+				.then(([nextDesigners, nextCustomers]) => {
+					setDesigners(nextDesigners);
+					setCustomers(nextCustomers);
+				})
+				.catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to load sharing recipients."));
+		}
 		void refreshFiles().catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to refresh files."));
 	}, [user.role, refreshFiles]);
 
@@ -141,8 +150,50 @@ export default function FilesPage() {
 		}
 	}
 
+	async function sendToCustomer(event: React.FormEvent<HTMLFormElement>, fileKey: string) {
+		event.preventDefault();
+		const customerId = selectedCustomers[fileKey];
+		if (!customerId) return;
+		setSharingFile(fileKey);
+		setShareMessages((current) => ({ ...current, [`customer:${fileKey}`]: "" }));
+		try {
+			await shareFileWithUser(fileKey, customerId);
+			const customerName = customers.find((customer) => customer._id === customerId)?.name || "customer";
+			setShareMessages((current) => ({ ...current, [`customer:${fileKey}`]: `Shared with ${customerName}.` }));
+		} catch (error) {
+			setShareMessages((current) => ({ ...current, [`customer:${fileKey}`]: error instanceof Error ? error.message : "Unable to share file with customer." }));
+		} finally {
+			setSharingFile("");
+		}
+	}
+
 	function renderUploadedFile(file: CompletedFile) {
-		return <div className="file-row" key={file.fileKey || file.name}>{user.role === "admin" && file.fileKey && <input type="checkbox" aria-label={`Select ${file.name}`} checked={selectedFiles.includes(file.fileKey)} onChange={() => toggleFile(file.fileKey!)} />}<div className="file-meta"><strong>{file.name}</strong><span>{user.role === "admin" ? `From ${file.ownerName || "Unknown sender"} · ` : ""}{file.format} · {new Date(file.date).toLocaleString()}</span></div>{user.role === "admin" && file.fileKey && <form className="file-share-control" onSubmit={(event) => void sendToDesigner(event, file.fileKey!)}><select aria-label={`Choose designer for ${file.name}`} required value={selectedDesigners[file.fileKey] || ""} onChange={(event) => setSelectedDesigners((current) => ({ ...current, [file.fileKey!]: event.target.value }))}><option value="">Share with designer</option>{designers.map((designer) => <option key={designer._id} value={designer._id}>{designer.name}</option>)}</select><button className="button button-primary" type="submit" disabled={sharingFile === file.fileKey || !designers.length}>{sharingFile === file.fileKey ? "Sharing..." : "Share"}</button>{shareMessages[file.fileKey] && <span className={shareMessages[file.fileKey].startsWith("Shared") ? "form-success" : "form-error"}>{shareMessages[file.fileKey]}</span>}</form>}<FileDownload fileKey={file.fileKey} legacyUrl={file.fileUrl} name={file.name} /></div>;
+		return <div className="file-row" key={file.fileKey || file.name}>
+			{user.role === "admin" && file.fileKey && <input type="checkbox" aria-label={`Select ${file.name}`} checked={selectedFiles.includes(file.fileKey)} onChange={() => toggleFile(file.fileKey!)} />}
+			<div className="file-meta">
+				<strong>{file.name}</strong>
+				<span>{user.role === "admin" ? `From ${file.ownerName || "Unknown sender"} · ` : ""}{file.format} · {new Date(file.date).toLocaleString()}</span>
+			</div>
+			{user.role === "admin" && file.fileKey && <>
+				<form className="file-share-control" onSubmit={(event) => void sendToDesigner(event, file.fileKey!)}>
+					<select aria-label={`Choose designer for ${file.name}`} required value={selectedDesigners[file.fileKey] || ""} onChange={(event) => setSelectedDesigners((current) => ({ ...current, [file.fileKey!]: event.target.value }))}>
+						<option value="">Share with designer</option>
+						{designers.map((designer) => <option key={designer._id} value={designer._id}>{designer.name}</option>)}
+					</select>
+					<button className="button button-primary" type="submit" disabled={sharingFile === file.fileKey || !designers.length}>{sharingFile === file.fileKey ? "Sharing..." : "Share"}</button>
+					{shareMessages[file.fileKey] && <span className={shareMessages[file.fileKey].startsWith("Shared") ? "form-success" : "form-error"}>{shareMessages[file.fileKey]}</span>}
+				</form>
+				<form className="file-share-control" onSubmit={(event) => void sendToCustomer(event, file.fileKey!)}>
+					<select aria-label={`Choose customer for ${file.name}`} required value={selectedCustomers[file.fileKey] || ""} onChange={(event) => setSelectedCustomers((current) => ({ ...current, [file.fileKey!]: event.target.value }))}>
+						<option value="">Send to customer</option>
+						{customers.map((customer) => <option key={customer._id} value={customer._id}>{customer.name}</option>)}
+					</select>
+					<button className="button button-primary" type="submit" disabled={sharingFile === file.fileKey || !customers.length}>{sharingFile === file.fileKey ? "Sharing..." : "Send"}</button>
+					{shareMessages[`customer:${file.fileKey}`] && <span className={shareMessages[`customer:${file.fileKey}`].startsWith("Shared") ? "form-success" : "form-error"}>{shareMessages[`customer:${file.fileKey}`]}</span>}
+				</form>
+			</>}
+			<FileDownload fileKey={file.fileKey} legacyUrl={file.fileUrl} name={file.name} />
+		</div>;
 	}
 
 	return <><PageHeader eyebrow="File library" title="Received files" description={user.role === "admin" ? "Files submitted by customers and designers." : "Files shared with you and files assigned to your work."} />

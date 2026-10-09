@@ -10,6 +10,7 @@ export default function UploadPage() {
   const { user, addOrder, refreshFiles } = usePortal();
   const router = useRouter();
   const [customer, setCustomer] = useState(user.role === "customer" ? user.name : "Wilcom");
+  const [software, setSoftware] = useState<"Wilcom" | "WingsXP">("Wilcom");
   const [name, setName] = useState("");
   const format = "DST";
   const [priority, setPriority] = useState<Order["priority"]>("Normal");
@@ -30,6 +31,7 @@ export default function UploadPage() {
       const order: Order = {
         id: `SE-${Date.now().toString().slice(-6)}`,
         customer,
+        software,
         name: name.trim(),
         format,
         status: "Pending",
@@ -58,7 +60,7 @@ export default function UploadPage() {
     <section className="panel form-panel">
       <div className="form-grid">
         <div>
-          {user.role === "admin" && <label>Software<select value={customer} onChange={(event) => setCustomer(event.target.value)}><option>Wilcom</option><option>WingsXP</option></select></label>}
+          {user.role === "admin" ? <label>Software<select value={customer} onChange={(event) => { setCustomer(event.target.value); setSoftware(event.target.value as "Wilcom" | "WingsXP"); }}><option>Wilcom</option><option>WingsXP</option></select></label> : user.role === "customer" && <label>Software<select value={software} onChange={(event) => setSoftware(event.target.value as "Wilcom" | "WingsXP")}><option value="Wilcom">Wilcom</option><option value="WingsXP">WingsXP</option></select></label>}
           <label>Design name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Back logo - 10 inch" /></label>
           <label>Priority<select value={priority} onChange={(event) => setPriority(event.target.value as Order["priority"])}><option>Normal</option><option>Urgent</option></select></label>
         </div>
