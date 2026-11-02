@@ -2,7 +2,7 @@
 
 import Chart from "chart.js/auto";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { downloadFile, listFiles, type ApiFile } from "@/components/api";
+import { bulkDeleteFiles, downloadFile, listFiles, type ApiFile } from "@/components/api";
 import { FileImagePreview } from "@/components/file-image-preview";
 import { usePortal } from "@/components/portal-context";
 import { LoadingIndicator, PageHeader } from "@/components/portal-ui";
@@ -27,6 +27,9 @@ export default function CustomerDesignsPage() {
 	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(user.role === "admin");
 	const [downloadingFile, setDownloadingFile] = useState("");
+	const [deletingCustomerFiles, setDeletingCustomerFiles] = useState(false);
+	const [deletingCustomerId, setDeletingCustomerId] = useState("");
+	const [deleteMessage, setDeleteMessage] = useState("");
 	const [selectedCustomerId, setSelectedCustomerId] = useState("");
 	const [reportDates, setReportDates] = useState(getDefaultReportDates);
 	const reportChartRef = useRef<HTMLCanvasElement>(null);
@@ -138,6 +141,56 @@ export default function CustomerDesignsPage() {
 		}
 	}
 
+	async function refreshCustomerFiles() {
+		const allFiles = await listFiles();
+		setFiles(allFiles.filter((file) => file.owner?.role === "user"));
+	}
+
+	async function deleteCustomerFolder(customerId: string, customerName: string, customerFiles: ApiFile[]) {
+		if (!customerFiles.length || !window.confirm(`Delete all ${customerFiles.length} designs from ${customerName}'s folder? This cannot be undone.`)) return;
+		setDeletingCustomerId(customerId);
+		setDeleteMessage("");
+		try {
+			const result = await bulkDeleteFiles({ ownerId: customerId, deleteAll: true });
+			await refreshCustomerFiles();
+			setDeleteMessage(`${result.deletedCount} design${result.deletedCount === 1 ? "" : "s"} deleted from ${customerName}'s folder${result.failedCount ? `; ${result.failedCount} could not be removed` : ""}.`);
+		} catch (requestError) {
+			setDeleteMessage(requestError instanceof Error ? requestError.message : `Unable to delete designs from ${customerName}'s folder.`);
+		} finally {
+			setDeletingCustomerId("");
+		}
+	}
+
+	async function deleteAllCustomerFiles() {
+		const foldersToDelete = customerFolders.filter(([customerId, folder]) => customerId !== "unknown-customer" && folder.files.length > 0);
+		const totalFiles = foldersToDelete.reduce((total, [, folder]) => total + folder.files.length, 0);
+		if (!totalFiles || !window.confirm(`Delete all ${totalFiles} customer designs across ${foldersToDelete.length} folders? This cannot be undone.`)) return;
+		setDeletingCustomerFiles(true);
+		setDeleteMessage("");
+		try {
+			const results = await Promise.allSettled(foldersToDelete.map(async ([customerId]) => {
+				const result = await bulkDeleteFiles({ ownerId: customerId, deleteAll: true });
+				return result;
+			}));
+			await refreshCustomerFiles();
+			const totals = results.reduce((summary, result, index) => {
+				if (result.status === "fulfilled") {
+					summary.deletedCount += result.value.deletedCount;
+					summary.failedCount += result.value.failedCount;
+				} else {
+					summary.failedCount += foldersToDelete[index][1].files.length;
+					summary.errors.push(result.reason instanceof Error ? result.reason.message : `Unable to delete ${foldersToDelete[index][1].customerName}'s designs.`);
+				}
+				return summary;
+			}, { deletedCount: 0, failedCount: 0, errors: [] as string[] });
+			setDeleteMessage(`${totals.deletedCount} designs deleted${totals.failedCount ? `; ${totals.failedCount} could not be removed` : ""}.${totals.errors.length ? ` ${totals.errors.join(" ")}` : ""}`);
+		} catch (requestError) {
+			setDeleteMessage(requestError instanceof Error ? requestError.message : "Unable to refresh customer designs after deletion.");
+		} finally {
+			setDeletingCustomerFiles(false);
+		}
+	}
+
 	if (user.role !== "admin") {
 		return <PageHeader eyebrow="Customer workspace" title="Customer designs" description="This page is only available to administrators." />;
 	}
@@ -150,6 +203,12 @@ export default function CustomerDesignsPage() {
 				<div><p className="eyebrow">Design library</p><h2>Customer folders</h2></div>
 				<span className="team-count">{files.length} files · {customerFolders.length} customers</span>
 			</div>
+			<div className="file-bulk-actions customer-design-delete-actions">
+				<button className="text-button danger-text" type="button" disabled={!files.length || loading || deletingCustomerFiles || Boolean(deletingCustomerId)} onClick={() => void deleteAllCustomerFiles()}>
+					{deletingCustomerFiles ? "Deleting customer designs..." : `Delete all customer designs (${files.length})`}
+				</button>
+			</div>
+			{deleteMessage && <p className={deleteMessage.includes("could not") || deleteMessage.startsWith("Unable") ? "form-error" : "form-success"} role="status">{deleteMessage}</p>}
 			<div className="logo-report-filters customer-design-report-filters">
 				<label>From <input type="date" value={reportDates.start} max={reportDates.end || undefined} onChange={(event) => setReportDates((current) => ({ ...current, start: event.target.value }))} /></label>
 				<label>To <input type="date" value={reportDates.end} min={reportDates.start || undefined} onChange={(event) => setReportDates((current) => ({ ...current, end: event.target.value }))} /></label>
@@ -170,6 +229,11 @@ export default function CustomerDesignsPage() {
 								<strong>{folder.customerName}</strong>
 								<span>{folder.username ? `@${folder.username} · ` : ""}{folder.files.length} {folder.files.length === 1 ? "design" : "designs"}</span>
 							</summary>
+							<div className="file-bulk-actions customer-design-folder-actions">
+								<button className="text-button danger-text" type="button" disabled={!folder.files.length || deletingCustomerFiles || Boolean(deletingCustomerId)} onClick={() => void deleteCustomerFolder(customerId, folder.customerName, folder.files)}>
+									{deletingCustomerId === customerId ? "Deleting folder..." : "Delete all designs in this folder"}
+								</button>
+							</div>
 							<div className="file-list">
 								{folder.files.map((customerFile) => (
 									<div className="file-row" key={customerFile._id}>

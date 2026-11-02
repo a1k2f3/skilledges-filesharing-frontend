@@ -43,6 +43,7 @@ export default function FilesPage() {
 	const { user, files, receivedShares, refreshFiles, refreshReceivedShares } = usePortal();
 	const [designers, setDesigners] = useState<ApiUser[]>([]);
 	const [customers, setCustomers] = useState<ApiUser[]>([]);
+	const [admins, setAdmins] = useState<ApiUser[]>([]);
 	// const [customers, setCustomers] = useState<ApiUser[]>([]);
 	const [selectedDesigners, setSelectedDesigners] = useState<Record<string, string>>({});
 	const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string>>({});
@@ -58,10 +59,10 @@ export default function FilesPage() {
 	const [shareMessages, setShareMessages] = useState<Record<string, string>>({});
 	const [loadError, setLoadError] = useState("");
 	const receivedFiles = user.role === "admin"
-		? files.filter((file) => file.ownerRole === "designer" || file.ownerRole === "user")
+		? files.filter((file) => file.ownerRole === "designer" || file.ownerRole === "admin")
 		: user.role === "customer" ? files : [];
 	const uploadFolders: { ownerId?: string; name: string; files: CompletedFile[] }[] = user.role === "admin"
-		? [...designers, ...customers].map((account) => ({
+		? [...designers, ...admins].map((account) => ({
 			ownerId: account._id,
 			name: account.username || account.name,
 			files: receivedFiles.filter((file) => file.ownerId === account._id)
@@ -70,10 +71,11 @@ export default function FilesPage() {
 
 	useEffect(() => {
 		if (user.role === "admin") {
-			void Promise.all([listDesigners(), listUsers("user")])
-				.then(([nextDesigners, nextCustomers]) => {
+			void Promise.all([listDesigners(), listUsers("user"), listUsers("admin", true)])
+				.then(([nextDesigners, nextCustomers, nextAdmins]) => {
 					setDesigners(nextDesigners);
 					setCustomers(nextCustomers);
+					setAdmins(nextAdmins);
 				})
 				.catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to load sharing recipients."));
 		}
@@ -105,6 +107,34 @@ export default function FilesPage() {
 			setDeleteMessage(`${result.deletedCount} file${result.deletedCount === 1 ? "" : "s"} deleted${result.failedCount ? `; ${result.failedCount} could not be removed` : ""}.`);
 		} catch (error) {
 			setDeleteMessage(error instanceof Error ? error.message : "Unable to delete files.");
+		} finally {
+			setDeletingFiles(false);
+		}
+	}
+
+	async function deleteAllUploadedFiles() {
+		const foldersToDelete = uploadFolders.filter((folder) => folder.ownerId && folder.files.length);
+		const totalFiles = foldersToDelete.reduce((total, folder) => total + folder.files.length, 0);
+		if (!totalFiles || !window.confirm(`Delete all ${totalFiles} designer and admin uploaded files across ${foldersToDelete.length} folders? This cannot be undone.`)) return;
+		setDeletingFiles(true);
+		setDeleteMessage("");
+		try {
+			const results = await Promise.allSettled(foldersToDelete.map((folder) => bulkDeleteFiles({ ownerId: folder.ownerId!, deleteAll: true })));
+			setSelectedFiles([]);
+			await refreshFiles();
+			const totals = results.reduce((summary, result, index) => {
+				if (result.status === "fulfilled") {
+					summary.deletedCount += result.value.deletedCount;
+					summary.failedCount += result.value.failedCount;
+				} else {
+					summary.failedCount += foldersToDelete[index].files.length;
+					summary.errors.push(result.reason instanceof Error ? result.reason.message : `Unable to delete files belonging to ${foldersToDelete[index].name}.`);
+				}
+				return summary;
+			}, { deletedCount: 0, failedCount: 0, errors: [] as string[] });
+			setDeleteMessage(`${totals.deletedCount} file${totals.deletedCount === 1 ? "" : "s"} deleted${totals.failedCount ? `; ${totals.failedCount} could not be removed` : ""}.${totals.errors.length ? ` ${totals.errors.join(" ")}` : ""}`);
+		} catch (error) {
+			setDeleteMessage(error instanceof Error ? error.message : "Unable to refresh files after deletion.");
 		} finally {
 			setDeletingFiles(false);
 		}
@@ -253,9 +283,14 @@ export default function FilesPage() {
 
 			{(user.role === "admin" || user.role === "customer") && <section className="received-file-group">
 				<div className="received-file-group-heading">
-					<h3>{user.role === "admin" ? "User uploads" : "Your uploads"}</h3>
+					<h3>{user.role === "admin" ? "Designer and admin uploads" : "Your uploads"}</h3>
 					<span>{receivedFiles.length}</span>
 				</div>
+				{user.role === "admin" && <div className="file-bulk-actions">
+					<button className="text-button danger-text" type="button" disabled={!receivedFiles.length || deletingFiles} onClick={() => void deleteAllUploadedFiles()}>
+						{deletingFiles ? "Deleting uploads..." : `Delete all designer and admin uploads (${receivedFiles.length})`}
+					</button>
+				</div>}
 				{deleteMessage && <p className={deleteMessage.includes("could not") || deleteMessage.includes("Unable") ? "form-error" : "form-success"} role="status">{deleteMessage}</p>}
 				{uploadFolders.length ? uploadFolders.map((folder) => {
 					const folderFileIds = folder.files.flatMap((file) => file.fileKey ? [file.fileKey] : []);

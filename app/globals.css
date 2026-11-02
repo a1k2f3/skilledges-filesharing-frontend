@@ -18,3 +18,5 @@
 @media(max-width:560px){.logo-report-filters{align-items:stretch;flex-direction:column}.logo-report-filters input,.logo-report-filters select{width:100%}.logo-report-chart{height:280px}}
 .customer-design-report-filters{align-items:flex-end}.customer-design-report-total{color:var(--ink);font-size:13px;margin:0 0 10px auto}
 @media(max-width:560px){.customer-design-report-total{margin:4px 0}}
+.preview-thumbnail{height:136px;width:156px}.file-row{min-height:160px;padding-left:196px}.file-row .preview-thumbnail{left:20px;top:12px}.file-row>input[type=checkbox]{top:72px}
+@media(max-width:560px){.file-row{min-height:120px;padding-left:136px}.file-row .preview-thumbnail{height:96px;left:12px;top:12px;width:112px}.file-row>input[type=checkbox]{top:50px}}
