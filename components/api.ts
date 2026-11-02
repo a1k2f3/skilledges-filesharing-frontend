@@ -71,6 +71,7 @@ export type ApiFileShare = {
   file: Pick<ApiFile, "_id" | "originalName" | "secureUrl" | "size" | "mimeType" | "format" | "widthInches" | "heightInches" | "resolutionDpi">;
   sharedBy?: Pick<ApiUser, "_id" | "name" | "email">;
   sharedWith?: Pick<ApiUser, "_id" | "name" | "email" | "role">;
+  seenAt?: string | null;
   createdAt: string;
 };
 
@@ -182,8 +183,12 @@ export async function signup(name: string, email: string, password: string, what
   return { token: payload.token, data: payload.data };
 }
 
-export function listUsers(role?: ApiUser["role"]) {
-  const query = role ? `?role=${encodeURIComponent(role)}` : "";
+export function listUsers(role?: ApiUser["role"], includeInactive = false) {
+  const params = new URLSearchParams();
+  if (role) params.set("role", role);
+  if (includeInactive) params.set("includeInactive", "true");
+  const search = params.toString();
+  const query = search ? `?${search}` : "";
   return request<ApiUser[]>(`/users${query}`);
 }
 
@@ -217,7 +222,7 @@ export function deleteTeam(teamId: string) {
   return request<{ _id: string }>(`/teams/${teamId}`, { method: "DELETE" });
 }
 
-export function bulkDeleteFiles(options: { fileIds?: string[]; deleteAll?: boolean }) {
+export function bulkDeleteFiles(options: { ownerId: string; fileIds?: string[]; deleteAll?: boolean }) {
   return request<{ deletedCount: number; failedCount: number }>("/files/admin/bulk-delete", {
     method: "POST",
     body: JSON.stringify(options)
@@ -266,6 +271,17 @@ export function shareFileWithAdmins(fileId: string) {
 
 export function listReceivedShares() {
   return request<ApiFileShare[]>("/shares/received");
+}
+
+export function markReceivedSharesSeen(shareIds: string[]) {
+  return request<{ updatedCount: number; seenAt: string }>("/shares/received/seen", {
+    method: "PATCH",
+    body: JSON.stringify({ shareIds })
+  });
+}
+
+export function deleteReceivedShare(shareId: string) {
+  return request<{ message: string }>(`/shares/received/${encodeURIComponent(shareId)}`, { method: "DELETE" });
 }
 
 export function listNotifications() {

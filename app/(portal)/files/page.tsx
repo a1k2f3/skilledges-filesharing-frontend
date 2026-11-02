@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { bulkDeleteFiles, downloadFile, downloadFilesAsZip, listDesigners, shareFileWithUser, type ApiFileShare, type ApiUser } from "@/components/api";
+import { bulkDeleteFiles, deleteReceivedShare, downloadFile, downloadFilesAsZip, listDesigners, listUsers, markReceivedSharesSeen, shareFileWithUser, type ApiFileShare, type ApiUser } from "@/components/api";
 import { getFileUrl } from "@/components/file-store";
 import { FileImagePreview } from "@/components/file-image-preview";
 import { usePortal, type CompletedFile } from "@/components/portal-context";
@@ -35,51 +35,61 @@ function FileDownload({ fileKey, legacyUrl, name }: { fileKey?: string; legacyUr
 	return <div className="file-actions"><FileImagePreview fileId={isApiFile ? fileKey : undefined} name={name} legacyUrl={isApiFile ? undefined : url} />{isApiFile ? <button className="button button-secondary" type="button" disabled={downloading} onClick={() => void handleDownload()}>{downloading ? "Downloading..." : "Download file"}</button> : url ? <a className="button button-secondary" href={url} download={name}>Download</a> : <span className="muted">Preparing file...</span>}{downloadError && <span className="form-error" role="alert">{downloadError}</span>}</div>;
 }
 
-function ReceivedFileRow({ share, selected, onToggle }: { share: ApiFileShare; selected?: boolean; onToggle?: (shareId: string) => void }) {
-	return <div className="file-row">{onToggle && <input type="checkbox" aria-label={`Select ${share.file.originalName}`} checked={Boolean(selected)} onChange={() => onToggle(share._id)} />}<div className="file-meta"><strong>{share.file.originalName}</strong><span>From {share.sharedBy?.name || "Unknown sender"} · {share.file.widthInches && share.file.heightInches ? `${share.file.widthInches} × ${share.file.heightInches} in${share.file.resolutionDpi ? ` @ ${share.file.resolutionDpi} DPI` : ""} · ` : ""}{new Date(share.createdAt).toLocaleString()}</span></div><FileDownload fileKey={share.file._id} name={share.file.originalName} /></div>;
+function ReceivedFileRow({ share, selected, onToggle, onDelete, deleting }: { share: ApiFileShare; selected?: boolean; onToggle?: (shareId: string) => void; onDelete?: (shareId: string) => void; deleting?: boolean }) {
+	return <div className="file-row">{onToggle && <input type="checkbox" aria-label={`Select ${share.file.originalName}`} checked={Boolean(selected)} onChange={() => onToggle(share._id)} />}<div className="file-meta"><strong>{share.file.originalName}</strong><span>From {share.sharedBy?.name || "Unknown sender"} · {share.file.widthInches && share.file.heightInches ? `${share.file.widthInches} × ${share.file.heightInches} in${share.file.resolutionDpi ? ` @ ${share.file.resolutionDpi} DPI` : ""} · ` : ""}{new Date(share.createdAt).toLocaleString()}</span></div><div className="file-actions"><FileDownload fileKey={share.file._id} name={share.file.originalName} />{onDelete && <button className="text-button danger-text" type="button" disabled={deleting} onClick={() => onDelete(share._id)}>{deleting ? "Removing..." : "Delete"}</button>}</div></div>;
 }
 
 export default function FilesPage() {
-	const { user, files, receivedShares, refreshFiles } = usePortal();
+	const { user, files, receivedShares, refreshFiles, refreshReceivedShares } = usePortal();
 	const [designers, setDesigners] = useState<ApiUser[]>([]);
+	const [customers, setCustomers] = useState<ApiUser[]>([]);
 	const [selectedDesigners, setSelectedDesigners] = useState<Record<string, string>>({});
 	const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 	const [selectedReceivedShares, setSelectedReceivedShares] = useState<string[]>([]);
 	const [deleteMessage, setDeleteMessage] = useState("");
+	const [receivedDeleteMessage, setReceivedDeleteMessage] = useState("");
+	const [deletingReceivedShare, setDeletingReceivedShare] = useState("");
 	const [deletingFiles, setDeletingFiles] = useState(false);
 	const [downloadMessage, setDownloadMessage] = useState("");
 	const [downloadingFiles, setDownloadingFiles] = useState(false);
 	const [sharingFile, setSharingFile] = useState("");
 	const [shareMessages, setShareMessages] = useState<Record<string, string>>({});
 	const [loadError, setLoadError] = useState("");
-	const receivedFiles = user.role === "admin" || user.role === "customer" ? files : [];
-	const uploadedFileFolders = Object.values(receivedFiles.reduce<Record<string, { name: string; files: CompletedFile[] }>>((folders, file) => {
-		const senderId = file.ownerId || file.ownerName || "unknown-sender";
-		const folder = folders[senderId] || { name: file.ownerName || "Unknown sender", files: [] };
-		folder.files.push(file);
-		folders[senderId] = folder;
-		return folders;
-	}, {}));
-	const receivedFileFolders = Object.values(receivedShares.reduce<Record<string, { name: string; shares: ApiFileShare[] }>>((folders, share) => {
-		const senderId = share.sharedBy?._id || "unknown-sender";
-		const folder = folders[senderId] || { name: share.sharedBy?.name || "Unknown sender", shares: [] };
-		folder.shares.push(share);
-		folders[senderId] = folder;
-		return folders;
-	}, {}));
+	const receivedFiles = user.role === "admin"
+		? files.filter((file) => file.ownerRole === "designer" || file.ownerRole === "user")
+		: user.role === "customer" ? files : [];
+	const uploadFolders: { ownerId?: string; name: string; files: CompletedFile[] }[] = user.role === "admin"
+		? [...designers, ...customers].map((account) => ({
+			ownerId: account._id,
+			name: account.username || account.name,
+			files: receivedFiles.filter((file) => file.ownerId === account._id)
+		}))
+		: [{ name: user.name, files: receivedFiles }];
 
 	useEffect(() => {
-		if (user.role === "admin") void listDesigners().then(setDesigners).catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to load designers."));
+		if (user.role === "admin") {
+			void listDesigners(true).then(setDesigners).catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to load designers."));
+			void listUsers("user", true).then(setCustomers).catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to load customers."));
+		}
 		void refreshFiles().catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to refresh files."));
 	}, [user.role, refreshFiles]);
 
-	async function deleteSelectedFiles(deleteAll: boolean) {
-		const count = deleteAll ? files.length : selectedFiles.length;
-		if (!count || !window.confirm(deleteAll ? `Delete all ${count} uploaded files? This cannot be undone.` : `Delete ${count} selected file${count === 1 ? "" : "s"}? This cannot be undone.`)) return;
+	useEffect(() => {
+		const unseenShareIds = receivedShares.filter((share) => !share.seenAt).map((share) => share._id);
+		if (!unseenShareIds.length) return;
+		void markReceivedSharesSeen(unseenShareIds)
+			.then(() => refreshReceivedShares())
+			.catch((error) => setLoadError(error instanceof Error ? error.message : "Unable to mark received files as seen."));
+	}, [receivedShares, refreshReceivedShares]);
+
+	async function deleteSelectedFiles(ownerId: string, ownerName: string, ownerFiles: CompletedFile[], fileIds: string[], deleteAll: boolean) {
+		if (!ownerId) return;
+		const deleteCount = deleteAll ? ownerFiles.length : fileIds.length;
+		if (!deleteCount || !window.confirm(deleteAll ? `Delete all ${deleteCount} files belonging to ${ownerName}? This cannot be undone.` : `Delete ${deleteCount} selected file${deleteCount === 1 ? "" : "s"} belonging to ${ownerName}? This cannot be undone.`)) return;
 		setDeletingFiles(true);
 		setDeleteMessage("");
 		try {
-			const result = await bulkDeleteFiles(deleteAll ? { deleteAll: true } : { fileIds: selectedFiles });
+			const result = await bulkDeleteFiles(deleteAll ? { ownerId, deleteAll: true } : { ownerId, fileIds });
 			setSelectedFiles([]);
 			await refreshFiles();
 			setDeleteMessage(`${result.deletedCount} file${result.deletedCount === 1 ? "" : "s"} deleted${result.failedCount ? `; ${result.failedCount} could not be removed` : ""}.`);
@@ -124,6 +134,23 @@ export default function FilesPage() {
 		setSelectedFiles((current) => current.includes(fileKey) ? current.filter((id) => id !== fileKey) : [...current, fileKey]);
 	}
 
+	async function removeReceivedFile(shareId: string) {
+		const share = receivedShares.find((item) => item._id === shareId);
+		if (!share || !window.confirm(`Remove "${share.file.originalName}" from your received files?`)) return;
+		setDeletingReceivedShare(shareId);
+		setReceivedDeleteMessage("");
+		try {
+			await deleteReceivedShare(shareId);
+			setSelectedReceivedShares((current) => current.filter((id) => id !== shareId));
+			await refreshReceivedShares();
+			setReceivedDeleteMessage("File removed from your received list.");
+		} catch (error) {
+			setReceivedDeleteMessage(error instanceof Error ? error.message : "Unable to remove received file.");
+		} finally {
+			setDeletingReceivedShare("");
+		}
+	}
+
 	async function sendToDesigner(event: React.FormEvent<HTMLFormElement>, fileKey: string) {
 		event.preventDefault();
 		const designerId = selectedDesigners[fileKey];
@@ -145,9 +172,57 @@ export default function FilesPage() {
 		return <div className="file-row" key={file.fileKey || file.name}>{user.role === "admin" && file.fileKey && <input type="checkbox" aria-label={`Select ${file.name}`} checked={selectedFiles.includes(file.fileKey)} onChange={() => toggleFile(file.fileKey!)} />}<div className="file-meta"><strong>{file.name}</strong><span>{user.role === "admin" ? `From ${file.ownerName || "Unknown sender"} · ` : ""}{file.format} · {new Date(file.date).toLocaleString()}</span></div>{user.role === "admin" && file.fileKey && <form className="file-share-control" onSubmit={(event) => void sendToDesigner(event, file.fileKey!)}><select aria-label={`Choose designer for ${file.name}`} required value={selectedDesigners[file.fileKey] || ""} onChange={(event) => setSelectedDesigners((current) => ({ ...current, [file.fileKey!]: event.target.value }))}><option value="">Share with designer</option>{designers.map((designer) => <option key={designer._id} value={designer._id}>{designer.name}</option>)}</select><button className="button button-primary" type="submit" disabled={sharingFile === file.fileKey || !designers.length}>{sharingFile === file.fileKey ? "Sharing..." : "Share"}</button>{shareMessages[file.fileKey] && <span className={shareMessages[file.fileKey].startsWith("Shared") ? "form-success" : "form-error"}>{shareMessages[file.fileKey]}</span>}</form>}<FileDownload fileKey={file.fileKey} legacyUrl={file.fileUrl} name={file.name} /></div>;
 	}
 
-	return <><PageHeader eyebrow="File library" title="Received files" description={user.role === "admin" ? "Files submitted by customers and designers." : "Files shared with you and files assigned to your work."} />
+	return <>
+		<PageHeader eyebrow="File library" title="Received files" description="Browse shared files and uploads in one place." />
 		{loadError && <p className="form-error">{loadError}</p>}
-		<section className="panel"><div className="panel-heading"><div><p className="eyebrow">Shared with you</p><h2>Received files</h2></div><span className="team-count">{receivedShares.length} files</span></div>{receivedShares.length > 0 && <div className="file-bulk-actions"><label><input type="checkbox" checked={selectedReceivedShares.length === receivedShares.length} onChange={(event) => setSelectedReceivedShares(event.target.checked ? receivedShares.map((share) => share._id) : [])} /> Select all</label><button className="text-button" type="button" disabled={!selectedReceivedShares.length || downloadingFiles} onClick={() => void downloadSharedFiles(selectedReceivedShares)}>{downloadingFiles ? "Preparing ZIP..." : `Download selected (${selectedReceivedShares.length})`}</button><button className="text-button" type="button" disabled={downloadingFiles} onClick={() => void downloadSharedFiles(receivedShares.map((share) => share._id))}>{downloadingFiles ? "Preparing ZIP..." : "Download all files"}</button></div>}{downloadMessage && <p className={downloadMessage.startsWith("Unable") ? "form-error" : "form-success"}>{downloadMessage}</p>}<div className="sender-folders">{receivedShares.length ? user.role === "admin" ? receivedFileFolders.map((folder, index) => <details className="sender-folder" key={`${folder.name}-${index}`} open><summary><strong>{folder.name}</strong><span>{folder.shares.length} {folder.shares.length === 1 ? "file" : "files"}</span></summary><div className="file-list">{folder.shares.map((share) => <ReceivedFileRow key={share._id} share={share} selected={selectedReceivedShares.includes(share._id)} onToggle={toggleReceivedShare} />)}</div></details>) : receivedShares.map((share) => <ReceivedFileRow key={share._id} share={share} selected={selectedReceivedShares.includes(share._id)} onToggle={toggleReceivedShare} />) : <div className="empty-state"><strong>No files shared with you</strong><p>Files sent directly to your account will appear here.</p></div>}</div></section>
-		{(user.role === "admin" || user.role === "customer") && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Incoming uploads</p><h2>{user.role === "admin" ? "All uploaded files" : "Your uploaded files"}</h2></div><span className="team-count">{receivedFiles.length} files</span></div>{user.role === "admin" && <div className="file-bulk-actions"><label><input type="checkbox" checked={Boolean(receivedFiles.length) && selectedFiles.length === receivedFiles.length} onChange={(event) => setSelectedFiles(event.target.checked ? receivedFiles.flatMap((file) => file.fileKey ? [file.fileKey] : []) : [])} /> Select all</label><button className="text-button" type="button" disabled={!selectedFiles.length || downloadingFiles} onClick={() => void downloadUploadedFiles(selectedFiles)}>{downloadingFiles ? "Preparing ZIP..." : `Download selected (${selectedFiles.length})`}</button><button className="text-button" type="button" disabled={!receivedFiles.length || downloadingFiles} onClick={() => void downloadUploadedFiles(receivedFiles.flatMap((file) => file.fileKey ? [file.fileKey] : []))}>{downloadingFiles ? "Preparing ZIP..." : "Download all files"}</button><button className="text-button danger-text" type="button" disabled={!selectedFiles.length || deletingFiles} onClick={() => void deleteSelectedFiles(false)}>Delete selected ({selectedFiles.length})</button><button className="text-button danger-text" type="button" disabled={!receivedFiles.length || deletingFiles} onClick={() => void deleteSelectedFiles(true)}>Delete all files</button></div>}{deleteMessage && <p className={deleteMessage.includes("could not") || deleteMessage.includes("Unable") ? "form-error" : "form-success"}>{deleteMessage}</p>}<div className="file-list">{receivedFiles.length ? user.role === "admin" ? uploadedFileFolders.map((folder, index) => <details className="sender-folder" key={`${folder.name}-${index}`} open><summary><strong>{folder.name}</strong><span>{folder.files.length} {folder.files.length === 1 ? "file" : "files"}</span></summary><div className="file-list">{folder.files.map(renderUploadedFile)}</div></details>) : receivedFiles.map(renderUploadedFile) : <div className="empty-state"><strong>No files received yet</strong><p>New uploads will appear here.</p></div>}</div></section>}
+		<section className="panel">
+			<div className="panel-heading">
+				<div><p className="eyebrow">Your file library</p><h2>Received files</h2></div>
+				<span className="team-count">{user.role === "admin" ? receivedFiles.length : receivedShares.length + receivedFiles.length} files</span>
+			</div>
+
+			{user.role !== "admin" && receivedShares.length > 0 && <section className="received-file-group">
+				<div className="received-file-group-heading"><h3>Shared with you</h3><span>{receivedShares.length}</span></div>
+				<div className="file-bulk-actions">
+					<label><input type="checkbox" checked={selectedReceivedShares.length === receivedShares.length} onChange={(event) => setSelectedReceivedShares(event.target.checked ? receivedShares.map((share) => share._id) : [])} /> Select all</label>
+					<button className="text-button" type="button" disabled={!selectedReceivedShares.length || downloadingFiles} onClick={() => void downloadSharedFiles(selectedReceivedShares)}>{downloadingFiles ? "Preparing ZIP..." : `Download selected (${selectedReceivedShares.length})`}</button>
+					<button className="text-button" type="button" disabled={downloadingFiles} onClick={() => void downloadSharedFiles(receivedShares.map((share) => share._id))}>{downloadingFiles ? "Preparing ZIP..." : "Download all"}</button>
+				</div>
+				<div className="file-list">{receivedShares.map((share) => <ReceivedFileRow
+					key={share._id}
+					share={share}
+					selected={selectedReceivedShares.includes(share._id)}
+					onToggle={toggleReceivedShare}
+					onDelete={user.role === "designer" ? removeReceivedFile : undefined}
+					deleting={deletingReceivedShare === share._id}
+				/>)}</div>
+				{receivedDeleteMessage && <p className={receivedDeleteMessage.startsWith("Unable") ? "form-error" : "form-success"} role="status">{receivedDeleteMessage}</p>}
+			</section>}
+
+			{(user.role === "admin" || user.role === "customer") && <section className="received-file-group">
+				<div className="received-file-group-heading">
+					<h3>{user.role === "admin" ? "User uploads" : "Your uploads"}</h3>
+					<span>{receivedFiles.length}</span>
+				</div>
+				{deleteMessage && <p className={deleteMessage.includes("could not") || deleteMessage.includes("Unable") ? "form-error" : "form-success"} role="status">{deleteMessage}</p>}
+				{uploadFolders.length ? uploadFolders.map((folder) => {
+					const folderFileIds = folder.files.flatMap((file) => file.fileKey ? [file.fileKey] : []);
+					const selectedFolderFileIds = selectedFiles.filter((fileId) => folderFileIds.includes(fileId));
+					return <details className="sender-folder received-upload-folder" key={folder.ownerId || folder.name} open>
+						<summary><strong>{folder.name}</strong><span>{folder.files.length} {folder.files.length === 1 ? "file" : "files"}</span></summary>
+						{user.role === "admin" && folder.ownerId && <div className="file-bulk-actions">
+							<label><input type="checkbox" checked={Boolean(folderFileIds.length) && selectedFolderFileIds.length === folderFileIds.length} onChange={(event) => setSelectedFiles((current) => event.target.checked ? [...new Set([...current, ...folderFileIds])] : current.filter((fileId) => !folderFileIds.includes(fileId)))} /> Select all</label>
+							<button className="text-button" type="button" disabled={!selectedFolderFileIds.length || downloadingFiles} onClick={() => void downloadUploadedFiles(selectedFolderFileIds)}>{downloadingFiles ? "Preparing ZIP..." : `Download selected (${selectedFolderFileIds.length})`}</button>
+							<button className="text-button" type="button" disabled={!folderFileIds.length || downloadingFiles} onClick={() => void downloadUploadedFiles(folderFileIds)}>{downloadingFiles ? "Preparing ZIP..." : "Download all"}</button>
+							<button className="text-button danger-text" type="button" disabled={!selectedFolderFileIds.length || deletingFiles} onClick={() => void deleteSelectedFiles(folder.ownerId!, folder.name, folder.files, selectedFolderFileIds, false)}>Delete selected ({selectedFolderFileIds.length})</button>
+							<button className="text-button danger-text" type="button" aria-label={`Delete all files in ${folder.name}'s folder`} disabled={!folder.files.length || deletingFiles} onClick={() => void deleteSelectedFiles(folder.ownerId!, folder.name, folder.files, [], true)}>Delete all files in this folder</button>
+						</div>}
+						<div className="file-list">{folder.files.map(renderUploadedFile)}</div>
+					</details>;
+				}) : <div className="empty-state"><strong>{user.role === "admin" ? "No designer folders found" : "No uploads found"}</strong></div>}
+			</section>}
+			{receivedShares.length === 0 && receivedFiles.length === 0 && user.role === "designer" && <div className="empty-state"><strong>No received files yet</strong><p>Files shared with you will appear here.</p></div>}
+		</section>
+		{downloadMessage && <p className={downloadMessage.startsWith("Unable") ? "form-error" : "form-success"} role="status">{downloadMessage}</p>}
 	</>;
 }
