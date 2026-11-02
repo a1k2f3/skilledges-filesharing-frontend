@@ -29,10 +29,52 @@ function NotificationCenter() {
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
-    void navigator.serviceWorker.getRegistration().then(async (registration) => {
-      const subscription = await registration?.pushManager.getSubscription();
-      setPushEnabled(Boolean(subscription));
-    }).catch(() => setPushStatus("Unable to check device notification settings."));
+    void (async () => {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        let subscription = await registration?.pushManager.getSubscription();
+        setPushEnabled(Boolean(subscription));
+        if (!registration || !subscription || Notification.permission !== "granted") return;
+
+        const { publicKey } = await getPushPublicKey();
+        const expectedKey = decodeVapidKey(publicKey);
+        const currentKey = subscription.options.applicationServerKey;
+        const subscribedKey = currentKey ? new Uint8Array(currentKey) : null;
+        const keyMatches = currentKey instanceof ArrayBuffer
+          && currentKey.byteLength === expectedKey.byteLength
+          && expectedKey.every((byte, index) => byte === subscribedKey?.[index]);
+        if (keyMatches) {
+          const details = subscription.toJSON();
+          if (details.endpoint && details.keys?.p256dh && details.keys.auth) {
+            await savePushSubscription({
+              endpoint: details.endpoint,
+              expirationTime: details.expirationTime ?? null,
+              keys: { p256dh: details.keys.p256dh, auth: details.keys.auth }
+            });
+          }
+          return;
+        }
+
+        await subscription.unsubscribe();
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: expectedKey as BufferSource
+        });
+        const details = subscription.toJSON();
+        if (!details.endpoint || !details.keys?.p256dh || !details.keys.auth) {
+          throw new Error("Browser returned an incomplete device subscription.");
+        }
+        await savePushSubscription({
+          endpoint: details.endpoint,
+          expirationTime: details.expirationTime ?? null,
+          keys: { p256dh: details.keys.p256dh, auth: details.keys.auth }
+        });
+        setPushEnabled(true);
+        setPushStatus("Device alert subscription refreshed.");
+      } catch (error) {
+        setPushStatus(error instanceof Error ? error.message : "Unable to check device notification settings.");
+      }
+    })();
   }, []);
 
   async function togglePushNotifications() {
