@@ -67,6 +67,23 @@ export type DesignerDeliveryReport = {
   designers: { designerId: string; designerName: string; logoCount: number }[];
 };
 
+export type LogoActivityReport = {
+  role: "admin" | "user";
+  designers: { designerId: string; designerName: string }[];
+  daily: {
+    date: string;
+    designerDeliveries: number;
+    customerUploads: number;
+    customerReceived: number;
+    designers: { designerId: string; designerName: string; logoCount: number }[];
+  }[];
+  totals: {
+    designerDeliveries: number;
+    customerUploads: number;
+    customerReceived: number;
+  };
+};
+
 export type ApiFileShare = {
   _id: string;
   file: Pick<ApiFile, "_id" | "originalName" | "secureUrl" | "size" | "mimeType" | "format" | "widthInches" | "heightInches" | "resolutionDpi">;
@@ -136,6 +153,11 @@ export function listOrders() {
 export function getDesignerDeliveryReport(start: string, end: string) {
   const params = new URLSearchParams({ start, end });
   return request<DesignerDeliveryReport>(`/orders/reports/designer-deliveries?${params}`);
+}
+
+export function getLogoActivityReport(start: string, end: string) {
+  const params = new URLSearchParams({ start, end });
+  return request<LogoActivityReport>(`/orders/reports/logo-activity?${params}`);
 }
 
 export function createOrder(order: { orderNumber: string; customerName: string; designName: string; format: string; software?: "Wilcom" | "WingsXP"; priority: string; productionNotes: string; sourceFiles: { fileKey: string; name: string }[] }) {

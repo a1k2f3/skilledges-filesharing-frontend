@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { bulkDeleteFiles, downloadFile, downloadFilesAsZip, listDesigners, listUsers, shareFileWithUser, type ApiFileShare, type ApiUser } from "@/components/api";
 import { bulkDeleteFiles, deleteReceivedShare, downloadFile, downloadFilesAsZip, listDesigners, listUsers, markReceivedSharesSeen, shareFileWithUser, type ApiFileShare, type ApiUser } from "@/components/api";
 import { getFileUrl } from "@/components/file-store";
 import { FileImagePreview } from "@/components/file-image-preview";
