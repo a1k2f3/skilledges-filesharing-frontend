@@ -2,12 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { io } from "socket.io-client";
-import { assignOrder as assignOrderRequest, attachOrderDeliverables as attachOrderDeliverablesRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listNotifications, listOrders, listReceivedShares, markAllNotificationsRead as markAllNotificationsReadRequest, markNotificationRead as markNotificationReadRequest, SOCKET_URL, updateOrder as updateOrderRequest, type ApiFile, type ApiFileShare, type ApiNotification, type ApiOrder, type ApiUser } from "./api";
+import { assignOrder as assignOrderRequest, attachOrderDeliverables as attachOrderDeliverablesRequest, createOrder as createOrderRequest, deleteOrder as deleteOrderRequest, getCurrentUser, listFiles, listNotifications, listOrders, listReceivedShares, markAllNotificationsRead as markAllNotificationsReadRequest, markNotificationRead as markNotificationReadRequest, SOCKET_URL, updateOrder as updateOrderRequest, updateUser as updateUserRequest, type ApiFile, type ApiFileShare, type ApiNotification, type ApiOrder, type ApiUser } from "./api";
 
 export type Role = "admin" | "customer" | "designer";
 export type User = { username: string; password: string; role: Role; name: string; id?: string; email?: string; whatsappNumber?: string | null };
 export type Order = {
-  id: string; customer: string; name: string; format: string; status: string;
+  id: string; customer: string; name: string; format: string; software?: "Wilcom" | "WingsXP"; status: string;
   priority: "Low" | "Normal" | "High" | "Urgent"; designer: string; designerId?: string; date: string; notes: string; productionNotes?: string; fileUrl: string; fileKey?: string;
   downloadName: string; sourceFiles?: { fileKey: string; name: string; deliverables?: { fileKey: string; name: string }[] }[]; sentToCustomer: string;
 };
@@ -36,6 +36,7 @@ type PortalContextValue = {
   assignOrder: (id: string, designerId: string) => Promise<void>; attachOrderDeliverables: (id: string, sourceFileId: string, files: { fileKey: string; name: string }[]) => Promise<void>; removeOrder: (id: string) => Promise<void>; addFile: (file: CompletedFile) => void;
   refreshFiles: () => Promise<void>; refreshReceivedShares: () => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>; markAllNotificationsRead: () => Promise<void>;
+  updateProfile: (updates: { name: string; email: string | null; whatsappNumber: string | null }) => Promise<void>;
   updatePassword: (password: string) => void; logout: () => void;
 };
 
@@ -66,6 +67,7 @@ function mapOrder(order: ApiOrder): Order {
     customer: order.customerName,
     name: order.designName,
     format: order.format,
+    software: order.software,
     status: order.status,
     priority: order.priority || "Normal",
     designer: order.assignedDesigner?.name || "",
@@ -183,6 +185,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       customerName: order.customer,
       designName: order.name,
       format: order.format,
+      software: order.software,
       priority: order.priority,
       productionNotes: order.productionNotes || order.notes,
       sourceFiles: order.sourceFiles || []
@@ -216,6 +219,12 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     const readAt = new Date().toISOString();
     setNotifications((current) => current.map((item) => ({ ...item, readAt })));
   };
+  const updateProfile = async (updates: { name: string; email: string | null; whatsappNumber: string | null }) => {
+    if (!user?.id) throw new Error("Unable to identify the current user.");
+    const updatedUser = mapUser(await updateUserRequest(user.id, updates));
+    setUser(updatedUser);
+    localStorage.setItem("skillsEdgeCurrentSession", JSON.stringify(updatedUser));
+  };
   const updatePassword = (password: string) => {
     if (!user) return;
     const nextUsers = { ...users, [user.username]: { ...user, password } };
@@ -230,7 +239,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     <p>Loading your workspace...</p>
     <span className="workspace-loading-track" aria-hidden="true"><span /></span>
   </main>;
-  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, notifications, addOrder, updateOrder, assignOrder, attachOrderDeliverables, removeOrder, addFile, refreshFiles, refreshReceivedShares, markNotificationRead, markAllNotificationsRead, updatePassword, logout }}>{children}</PortalContext.Provider>;
+  return <PortalContext.Provider value={{ user, users, orders, files, receivedShares, notifications, addOrder, updateOrder, assignOrder, attachOrderDeliverables, removeOrder, addFile, refreshFiles, refreshReceivedShares, markNotificationRead, markAllNotificationsRead, updateProfile, updatePassword, logout }}>{children}</PortalContext.Provider>;
 }
 
 export function usePortal() {
