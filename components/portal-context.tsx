@@ -164,6 +164,21 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     socket.on("order:updated", () => { void refreshOrders().catch(() => undefined); });
     socket.on("notification:new", (notification: ApiNotification) => {
       setNotifications((current) => [notification, ...current.filter((item) => item._id !== notification._id)].slice(0, 100));
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      void (async () => {
+        try {
+          const registration = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
+          const pushSubscription = await registration?.pushManager.getSubscription();
+          if (pushSubscription) return;
+          const systemNotification = new Notification(notification.title, {
+            body: notification.message,
+            tag: notification._id
+          });
+          systemNotification.onclick = () => window.focus();
+        } catch (error) {
+          console.warn("Unable to display system notification:", error);
+        }
+      })();
     });
     socket.on("notification:read", (payload: { notificationId: string; readAt: string }) => {
       setNotifications((current) => current.map((item) => item._id === payload.notificationId ? { ...item, readAt: payload.readAt } : item));
