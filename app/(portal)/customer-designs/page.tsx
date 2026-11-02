@@ -1,9 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Chart from "chart.js/auto";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { downloadFile, listFiles, type ApiFile } from "@/components/api";
+import { FileImagePreview } from "@/components/file-image-preview";
 import { usePortal } from "@/components/portal-context";
 import { LoadingIndicator, PageHeader } from "@/components/portal-ui";
+
+function toDateInputValue(date: Date) {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+
+function getDefaultReportDates() {
+	const end = new Date();
+	const start = new Date(end);
+	start.setDate(start.getDate() - 13);
+	return { start: toDateInputValue(start), end: toDateInputValue(end) };
+}
 
 export default function CustomerDesignsPage() {
 	const { user } = usePortal();
@@ -11,6 +27,9 @@ export default function CustomerDesignsPage() {
 	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(user.role === "admin");
 	const [downloadingFile, setDownloadingFile] = useState("");
+	const [selectedCustomerId, setSelectedCustomerId] = useState("");
+	const [reportDates, setReportDates] = useState(getDefaultReportDates);
+	const reportChartRef = useRef<HTMLCanvasElement>(null);
 
 	useEffect(() => {
 		if (user.role !== "admin") return;
@@ -34,6 +53,78 @@ export default function CustomerDesignsPage() {
 		}
 		return [...folders.entries()].sort((first, second) => first[1].customerName.localeCompare(second[1].customerName));
 	}, [files]);
+
+	const reportRows = useMemo(() => {
+		const start = new Date(`${reportDates.start}T00:00:00`);
+		const end = new Date(`${reportDates.end}T00:00:00`);
+		if (!reportDates.start || !reportDates.end || start > end) return [];
+		const dailyCounts = new Map<string, number>();
+		for (const file of files) {
+			if (file.owner?.role !== "user" || (selectedCustomerId && file.owner._id !== selectedCustomerId)) continue;
+			const uploadDate = toDateInputValue(new Date(file.createdAt));
+			if (uploadDate < reportDates.start || uploadDate > reportDates.end) continue;
+			dailyCounts.set(uploadDate, (dailyCounts.get(uploadDate) || 0) + 1);
+		}
+		const rows: { date: string; count: number }[] = [];
+		for (const day = new Date(start); day <= end; day.setDate(day.getDate() + 1)) {
+			const date = toDateInputValue(day);
+			rows.push({ date, count: dailyCounts.get(date) || 0 });
+		}
+		return rows;
+	}, [files, reportDates.end, reportDates.start, selectedCustomerId]);
+
+	useEffect(() => {
+		const canvas = reportChartRef.current;
+		if (!canvas || loading || error || !reportRows.length) return;
+		const chart = new Chart(canvas, {
+			type: "bar",
+			data: {
+				labels: reportRows.map((day) => new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
+				datasets: [{
+					label: "Customer designs sent",
+					data: reportRows.map((day) => day.count),
+					backgroundColor: "rgba(39, 100, 231, 0.82)",
+					hoverBackgroundColor: "#1d4ed8",
+					borderRadius: 6,
+					borderSkipped: false,
+					maxBarThickness: 32,
+					categoryPercentage: 0.72,
+					barPercentage: 0.86
+				}]
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				interaction: { mode: "index", intersect: false },
+				layout: { padding: { top: 8, right: 8 } },
+				plugins: {
+					legend: { display: false },
+					tooltip: {
+						backgroundColor: "#17212b",
+						padding: 12,
+						cornerRadius: 8,
+						titleFont: { weight: "bold" },
+						callbacks: { label: (context) => `Designs uploaded: ${context.parsed.y ?? 0}` }
+					}
+				},
+				scales: {
+					x: {
+						grid: { display: false },
+						border: { display: false },
+						ticks: { color: "#71808f", maxRotation: 0, autoSkip: true, maxTicksLimit: 14, font: { size: 11 } }
+					},
+					y: {
+						beginAtZero: true,
+						grace: "8%",
+						border: { display: false, dash: [4, 4] },
+						grid: { color: "#edf1f4" },
+						ticks: { color: "#71808f", precision: 0, stepSize: 1, padding: 8, font: { size: 11 } }
+					}
+				}
+			}
+		});
+		return () => chart.destroy();
+	}, [error, loading, reportRows]);
 
 	async function download(customerFile: ApiFile) {
 		setDownloadingFile(customerFile._id);
@@ -59,6 +150,18 @@ export default function CustomerDesignsPage() {
 				<div><p className="eyebrow">Design library</p><h2>Customer folders</h2></div>
 				<span className="team-count">{files.length} files · {customerFolders.length} customers</span>
 			</div>
+			<div className="logo-report-filters customer-design-report-filters">
+				<label>From <input type="date" value={reportDates.start} max={reportDates.end || undefined} onChange={(event) => setReportDates((current) => ({ ...current, start: event.target.value }))} /></label>
+				<label>To <input type="date" value={reportDates.end} min={reportDates.start || undefined} onChange={(event) => setReportDates((current) => ({ ...current, end: event.target.value }))} /></label>
+				<label>Customer
+					<select value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)}>
+						<option value="">All customers</option>
+						{customerFolders.map(([customerId, folder]) => <option key={customerId} value={customerId}>{folder.customerName}</option>)}
+					</select>
+				</label>
+				<strong className="customer-design-report-total">{reportRows.reduce((total, day) => total + day.count, 0)} designs uploaded</strong>
+			</div>
+			{reportDates.start && reportDates.end && reportDates.start <= reportDates.end && <div className="logo-report-chart"><canvas ref={reportChartRef} role="img" aria-label="Daily customer design uploads" /></div>}
 			{loading ? <LoadingIndicator label="Loading customer designs..." /> : customerFolders.length ? (
 				<div className="sender-folders">
 					{customerFolders.map(([customerId, folder]) => (
@@ -74,9 +177,12 @@ export default function CustomerDesignsPage() {
 											<strong>{customerFile.originalName}</strong>
 											<span>{customerFile.format || customerFile.mimeType} · {new Date(customerFile.createdAt).toLocaleString()}</span>
 										</div>
-										<button className="button button-secondary" type="button" disabled={downloadingFile === customerFile._id} onClick={() => void download(customerFile)}>
-											{downloadingFile === customerFile._id ? "Downloading..." : "Download file"}
-										</button>
+										<div className="file-actions">
+											<FileImagePreview fileId={customerFile._id} name={customerFile.originalName} mimeType={customerFile.mimeType} />
+											<button className="button button-secondary" type="button" disabled={downloadingFile === customerFile._id} onClick={() => void download(customerFile)}>
+												{downloadingFile === customerFile._id ? "Downloading..." : "Download file"}
+											</button>
+										</div>
 									</div>
 								))}
 							</div>

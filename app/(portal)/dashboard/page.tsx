@@ -45,7 +45,11 @@ export default function DashboardPage() {
     { label: "Total designs", value: visible.length, tone: "blue" },
     { label: "Pending", value: visible.filter((order) => order.status === "Pending").length, tone: "amber" },
     { label: "In design", value: visible.filter((order) => order.status === "In Design").length, tone: "violet" },
-    { label: "Completed", value: completed, tone: "green" }
+    { label: "Completed", value: completed, tone: "green" },
+    ...(user.role === "designer" ? [
+      { label: "Logos received", value: visible.reduce((total, order) => total + (order.sourceFiles?.length || 0), 0), tone: "blue", caption: "Across assigned orders" },
+      { label: "Logos sent", value: visible.reduce((total, order) => total + (order.sourceFiles || []).reduce((count, file) => count + (file.deliverables?.length || 0), 0), 0), tone: "green", caption: "Across assigned orders" }
+    ] : [])
   ];
   const fileProgress = visible.map((order) => {
     const sourceFiles = order.sourceFiles || [];
@@ -142,7 +146,7 @@ export default function DashboardPage() {
 
   return <>
     <PageHeader eyebrow={`Good to see you, ${user.name}`} title="Operations overview" description="Keep every stitch moving in the right direction." action={<Link href="/upload" className="button button-primary">＋ New design</Link>} />
-    <div className="stat-grid">{stats.map((stat) => <div className="stat-card" key={stat.label}><div className={`stat-mark ${stat.tone}`}></div><span>{stat.label}</span><strong>{stat.value}</strong><small>Today</small></div>)}</div>
+    <div className="stat-grid">{stats.map((stat) => <div className="stat-card" key={stat.label}><div className={`stat-mark ${stat.tone}`}></div><span>{stat.label}</span><strong>{stat.value}</strong><small>{"caption" in stat ? stat.caption : "Today"}</small></div>)}</div>
     <section className="completion-panel"><div><p className="eyebrow">Order completion</p><strong>{completed} of {visible.length} orders complete</strong></div><span>{completion}%</span><progress aria-label="Completed orders" max={visible.length || 1} value={completed} /></section>
     {(user.role === "admin" || user.role === "customer") && <section className="panel logo-activity-report">
       <div className="panel-heading"><div><p className="eyebrow">{user.role === "admin" ? "Designer and customer activity" : "Your design activity"}</p><h2>Daily logo report</h2><p className="panel-subtitle">{user.role === "admin" ? "Compare designer deliveries with customer uploads by date." : "See your submitted logos and designer deliveries by date."}</p></div></div>
